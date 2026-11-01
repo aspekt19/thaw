@@ -1,0 +1,10 @@
+{
+  "name": "@thaw/guard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Small internal piece for Thaw. SERV client and abuse helpers adapted from the published allowlatch package 0.2.2. The private AllowLatch commit f33257d was not readable from this environment.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

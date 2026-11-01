@@ -1,0 +1,24 @@
+{
+  "name": "thaw",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@thaw/guard": "*"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit && tsc -p packages/guard/tsconfig.json --noEmit",
+    "test": "SERV_LOG=0 tsx --test packages/guard/src/*.test.ts src/chance/*.test.ts src/captcha.test.ts src/http/*.test.ts",
+    "build": "tsc --noEmit && tsc -p packages/guard/tsconfig.json && vite build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1"
+  }
+}

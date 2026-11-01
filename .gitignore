@@ -1,0 +1,9 @@
+node_modules/
+dist/
+packages/guard/dist/
+.env
+.env.*
+!.env.example
+.vercel
+*.log
+.DS_Store

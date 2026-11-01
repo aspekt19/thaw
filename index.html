@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Thaw — бесплатная проверка шанса</title>
+    <link rel="stylesheet" href="/src/web/style.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">Thaw</a>
+      <p>Подготовка документов, если биржа заморозила вывод.</p>
+    </header>
+    <main>
+      <h1>Проверить шанс бесплатно</h1>
+      <p class="lead">
+        Мы смотрим текст уведомления и первый шаг депозита в блокчейне.
+        Это не юридическая помощь и не обещание разморозки. Санкционные случаи не берём.
+        Приватные ключи и сид-фразы не присылайте: такое поле нам не нужно.
+      </p>
+      <form id="check-form" action="/api/check-chance" method="post">
+        <div class="field">
+          <label for="exchange">Биржа</label>
+          <select id="exchange" name="exchange" required>
+            <option value="binance">Binance</option>
+            <option value="coinbase">Coinbase</option>
+            <option value="bybit">Bybit</option>
+            <option value="okx">OKX</option>
+            <option value="kucoin">KuCoin</option>
+            <option value="kraken">Kraken</option>
+            <option value="crypto_com">Crypto.com</option>
+            <option value="other">Другая</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="notice">Текст уведомления</label>
+          <textarea id="notice" name="notice" required maxlength="8000" rows="6"></textarea>
+          <p id="notice-help" class="hint">Вставьте текст как есть, без ключей и сид-фраз.</p>
+        </div>
+        <div class="split">
+          <div class="field">
+            <label for="amount">Сумма</label>
+            <input id="amount" name="amount" required inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="amount-help">
+            <p id="amount-help" class="hint">Например 1200</p>
+          </div>
+          <div class="field">
+            <label for="asset">Актив</label>
+            <input id="asset" name="asset" required maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" value="USDT">
+          </div>
+        </div>
+        <div class="field">
+          <label for="chain">Сеть</label>
+          <select id="chain" name="chain" required>
+            <option value="tron">TRON</option>
+            <option value="ethereum">Ethereum</option>
+            <option value="arbitrum">Arbitrum</option>
+          </select>
+          <p class="hint">Бесплатный просмотр здесь есть для TRON, Ethereum и Arbitrum.</p>
+        </div>
+        <div class="field">
+          <label for="deposit">Адрес отправителя или txid депозита</label>
+          <input id="deposit" name="deposit" required autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="date">Дата депозита</label>
+          <input id="date" name="date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="origin">Откуда средства</label>
+          <select id="origin" name="origin" required>
+            <option value="exchange_purchase">Покупка на другой бирже</option>
+            <option value="p2p">P2P</option>
+            <option value="otc">OTC</option>
+            <option value="salary">Зарплата в крипте</option>
+            <option value="mining_staking">Майнинг или стейкинг</option>
+            <option value="defi_airdrop">DeFi или airdrop</option>
+            <option value="goods_services">Оплата товаров и услуг</option>
+            <option value="transfer_person">Перевод от другого человека</option>
+            <option value="unknown">Не знаю</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="hasDocuments">Есть документы</label>
+          <select id="hasDocuments" name="hasDocuments">
+            <option value="">Не указано</option>
+            <option value="yes">Да</option>
+            <option value="no">Нет</option>
+          </select>
+        </div>
+        <div class="field check">
+          <input id="priorRefusal" name="priorRefusal" type="checkbox" value="yes">
+          <label for="priorRefusal">Уже был отказ по апелляции</label>
+        </div>
+        <input id="captchaToken" name="captchaToken" type="hidden" value="">
+        <input id="clientId" name="clientId" type="hidden" value="">
+        <button id="submit" type="submit">Проверить бесплатно</button>
+      </form>
+      <section id="result" aria-live="polite"></section>
+    </main>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>
