@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title>Thaw. Papers for a frozen withdrawal</title>
     <meta name="description" content="Thaw prepares source-of-funds papers after an exchange freezes a withdrawal. A paid chance check starts at $1 in USDC and is credited toward the file.">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -18,7 +19,10 @@
   </head>
   <body>
     <header class="bar">
-      <a class="brand" href="#top"><img src="/brand/thaw-lockup.svg" alt="Thaw" width="138" height="40"></a>
+      <a class="brand" href="#top">
+        <img class="for-light" src="/brand/thaw-lockup.svg" alt="Thaw" width="138" height="40">
+        <img class="for-dark" src="/brand/thaw-lockup-dark.svg" alt="" width="138" height="40">
+      </a>
       <nav>
         <a href="#how">The path</a>
         <a href="#prices">Prices</a>
@@ -29,82 +33,63 @@
 
     <div data-view="home" id="top">
       <section class="hero">
-        <div class="mesh" aria-hidden="true">
-          <span class="blob blob-a"></span>
-          <span class="blob blob-b"></span>
-          <span class="blob blob-c"></span>
-        </div>
-        <div class="grain" aria-hidden="true"></div>
         <div class="hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Document preparation</p>
-            <h1>
-              <span class="mask"><span class="line">Your withdrawal</span></span>
-              <span class="mask"><span class="line late">is <em>frozen.</em></span></span>
-            </h1>
-            <p class="lead">Thaw writes the source-of-funds papers an exchange asks for after an AML freeze. The exchange decides. We do not.</p>
+            <p class="kicker">Document preparation</p>
+            <h1>Papers for a withdrawal an exchange has frozen.</h1>
+            <p class="lead">Thaw builds a source-of-funds file from the notice you paste and the public deposit. The exchange decides. We do not.</p>
             <div class="hero-actions">
-              <a class="action cta" href="#check">Check the chance</a>
-              <a class="ghost" href="#how">See the path</a>
+              <a class="action" href="#check">Check the chance</a>
+              <a class="quiet" href="#how">How a file is built</a>
             </div>
-            <ul class="chips">
-              <li>From $1, credited</li>
+            <ul class="facts">
+              <li>From $1, credited toward the file</li>
               <li>Not legal advice</li>
               <li>No keys, ever</li>
             </ul>
           </div>
-          <div class="stage-wrap">
-            <div class="float float-a">$1 credited</div>
-            <div class="float float-b">Sample only</div>
-            <div class="window" id="demo" aria-live="polite">
-              <div class="window-bar">
-                <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="window-title">Thaw sample check</span>
-                <span class="sample-pill">Sample</span>
-              </div>
-              <div class="window-body">
-                <article class="beat on" data-beat="notice">
-                  <p class="beat-kicker">Exchange notice</p>
-                  <p class="beat-main" id="demo-type">Please provide source of funds for this deposit.</p>
-                  <p class="beat-foot">Sample wording. Not from a real account.</p>
+          <figure class="dossier" id="demo">
+            <div class="folder">
+              <div class="folder-tab">Case file <span>Sample</span></div>
+              <div class="folder-body">
+                <article class="sheet on">
+                  <p class="sheet-label">01 Trace</p>
+                  <p class="sheet-title">The deposit, then one hop</p>
+                  <ol class="trace">
+                    <li>The deposit you paste</li>
+                    <li>The first hop on one page of history</li>
+                    <li>A placeholder, not a real wallet</li>
+                  </ol>
                 </article>
-                <article class="beat" data-beat="trace">
-                  <p class="beat-kicker">Deposit trace</p>
-                  <p class="beat-main mono"><a href="https://basescan.org/address/0x1111111111111111111111111111111111111111">0x1111…1111</a></p>
-                  <ul class="beat-chips"><li>Base</li><li>One page of history</li><li>Placeholder address</li></ul>
-                  <p class="beat-foot">Public chain data. The address is a placeholder on basescan.org.</p>
+                <article class="sheet">
+                  <p class="sheet-label">02 Timeline</p>
+                  <p class="sheet-title">What happened, in order</p>
+                  <ul class="dates">
+                    <li><span>Deposit day</span><b>UTC calendar day</b></li>
+                    <li><span>Notice</span><b>The text you paste</b></li>
+                    <li><span>Appeal</span><b>Not written as sent</b></li>
+                  </ul>
                 </article>
-                <article class="beat" data-beat="rules">
-                  <p class="beat-kicker">Rule check</p>
-                  <p class="beat-main">Ordinary source-of-funds wording</p>
-                  <ul class="beat-chips"><li>No sanctions phrase</li><li>No police hold</li><li>No final closure</li></ul>
-                  <p class="beat-foot">The rules decide. This is a sample of the checks, not a verdict.</p>
+                <article class="sheet">
+                  <p class="sheet-label">03 Appeal draft</p>
+                  <p class="sheet-title">A letter you can check</p>
+                  <p class="draft">We attach the deposit, the first hop, and the records you already have. This sample is not a letter, and it is not a promise that the exchange will release the funds.</p>
                 </article>
-                <article class="beat" data-beat="verdict">
-                  <p class="beat-kicker">Chance verdict</p>
-                  <p class="beat-main">Medium</p>
-                  <ul class="beat-chips"><li>Sample level</li><li>Not a promise</li></ul>
-                  <p class="beat-foot">A real check returns high, medium, low, or declined.</p>
-                </article>
-                <article class="beat" data-beat="papers">
-                  <p class="beat-kicker">Case papers</p>
-                  <p class="beat-main mono">$48.00 remainder</p>
-                  <ul class="beat-chips"><li>$49 light file</li><li>$1 already paid</li></ul>
-                  <p class="beat-foot">Sample arithmetic. The exchange still decides.</p>
-                </article>
-              </div>
-              <div class="beat-dots" aria-hidden="true">
-                <i class="on"></i><i></i><i></i><i></i><i></i>
               </div>
             </div>
-          </div>
+            <div class="sheet-marks" aria-hidden="true">
+              <span class="sheet-mark on">Trace</span>
+              <span class="sheet-mark">Timeline</span>
+              <span class="sheet-mark">Appeal draft</span>
+            </div>
+            <figcaption>Sample pages. Not a real case.</figcaption>
+          </figure>
         </div>
-        <div class="hero-fade" aria-hidden="true"></div>
       </section>
 
       <section class="band" id="how">
         <div class="wrap">
-          <h2 data-rise>Five beats, then a file</h2>
+          <h2 data-rise>How a file is built</h2>
           <ol class="path">
             <li data-rise>
               <strong>Pay the check</strong>
@@ -124,7 +109,7 @@
             </li>
             <li data-rise>
               <strong>Case papers</strong>
-              <span>On a high or medium chance, the check is credited toward a $49 or $79 file.</span>
+              <span>On a high or medium chance, or a low chance after you confirm the warnings, the check is credited toward a $49 or $79 file.</span>
             </li>
           </ol>
         </div>
@@ -143,14 +128,14 @@
             <article class="wash" data-rise>
               <h3>Light file</h3>
               <p class="sum" id="remainder-figure">$49</p>
-              <p id="remainder-line">Opens after a high or medium chance. You pay $49 minus the check you already paid.</p>
+              <p id="remainder-line">Opens after a high or medium chance, or a low chance once you confirm. You pay $49 minus the check you already paid.</p>
               <button type="button" class="tier on" data-tier="light">Light, $49</button>
               <button type="button" class="action ghost cta" data-pick="light">See the $48 remainder</button>
             </article>
             <article data-rise>
               <h3>Full file</h3>
               <p class="sum" id="sample-figure">$79</p>
-              <p>Same rule, higher price. We do not publish a difference in the papers beyond the price.</p>
+              <p>Same opening rule, higher price. A later move from Light to Full is the $30 difference. We do not promise a different outcome.</p>
               <button type="button" class="tier" data-tier="full">Full, $79</button>
               <button type="button" class="action ghost cta" data-pick="full">See the $78 remainder</button>
             </article>
@@ -169,7 +154,7 @@
             <li>A police or court hold</li>
             <li>Theft, or a victim report</li>
             <li>A notice that the account is finally closed</li>
-            <li>A low chance. We will not open a file.</li>
+            <li>A low chance, unless you confirm the warnings. It still recommends the Full file.</li>
           </ul>
         </div>
       </section>
@@ -199,14 +184,10 @@
       </section>
 
       <section class="close">
-        <div class="mesh" aria-hidden="true">
-          <span class="blob blob-a"></span>
-          <span class="blob blob-b"></span>
-        </div>
         <div class="wrap close-copy">
           <h2>Start with the check.</h2>
-          <p>One USDC invoice on Base. If the chance is high or medium, that payment comes off the file.</p>
-          <a class="action cta light" href="#check">Check the chance</a>
+          <p>One USDC invoice on Base. If you open a file, that payment comes off the price. The exchange still decides.</p>
+          <a class="action" href="#check">Check the chance</a>
         </div>
       </section>
     </div>
@@ -318,7 +299,7 @@
         <p>This page is a draft placeholder. It is not a finished contract.</p>
         <p>Thaw prepares documents. It is not a law firm and not legal advice. We do not promise that an exchange will release a withdrawal or reopen an account.</p>
         <p>The chance check is a paid read of your notice and of public chain data. The published minimum is $1, paid in USDC to the address on your invoice. That fee is credited toward a light file at $49 or a full file at $79 on the same check. The remainder is a second USDC transfer. A case is paid only after we verify that transfer.</p>
-        <p>We decline sanctions cases, police or court holds, theft, and final closures. A low chance does not open a file.</p>
+        <p>We decline sanctions cases, police or court holds, theft, and final closures. A low chance opens a Full file only after you confirm the warnings. We do not create, alter, or falsify any document.</p>
         <p>You pay from your own wallet. We never ask for a private key or a seed phrase.</p>
       </section>
     </div>
@@ -334,7 +315,10 @@
     </div>
 
     <footer class="colophon">
-      <a class="brand brand-foot" href="#top"><img src="/brand/thaw-lockup.svg" alt="Thaw" width="110" height="32"></a>
+      <a class="brand brand-foot" href="#top">
+        <img class="for-light" src="/brand/thaw-lockup.svg" alt="Thaw" width="110" height="32">
+        <img class="for-dark" src="/brand/thaw-lockup-dark.svg" alt="" width="110" height="32">
+      </a>
       <p class="foot-links"><a href="#check">Check</a> <a href="#prices">Prices</a> <a href="#questions">Questions</a> <a href="#terms">Terms</a> <a href="#privacy">Privacy</a></p>
       <p>2026</p>
     </footer>

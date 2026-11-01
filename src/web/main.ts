@@ -1,8 +1,7 @@
-import '@fontsource/geist-sans/latin-400.css'
-import '@fontsource/geist-sans/latin-500.css'
-import '@fontsource/geist-sans/latin-600.css'
-import '@fontsource/geist-sans/latin-700.css'
-import '@fontsource/geist-mono/latin-500.css'
+import '@fontsource/inter-tight/latin-500.css'
+import '@fontsource/inter-tight/latin-700.css'
+import '@fontsource/source-serif-4/latin-400.css'
+import '@fontsource/source-serif-4/latin-600.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
 import { LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
 
@@ -885,40 +884,24 @@ function rise(): void {
 rise()
 startDemo()
 
-const BEATS = ['notice', 'trace', 'rules', 'verdict', 'papers'] as const
-
 function startDemo(): void {
   const root = document.querySelector('#demo')
-  const typed = document.querySelector('#demo-type')
-  if (!root || !typed) return
-  const beats = Array.from(root.querySelectorAll<HTMLElement>('.beat'))
-  const dots = Array.from(root.querySelectorAll<HTMLElement>('.beat-dots i'))
-  const full = typed.textContent ?? ''
-  if (!prefersMotion()) return
+  if (!root) return
+  const sheets = Array.from(root.querySelectorAll<HTMLElement>('.sheet'))
+  const marks = Array.from(root.querySelectorAll<HTMLElement>('.sheet-mark'))
+  if (!sheets.length || !prefersMotion()) return
   let index = 0
   let timer = 0
-  const showBeat = (next: number) => {
-    beats.forEach((beat, i) => beat.classList.toggle('on', i === next))
-    dots.forEach((dot, i) => dot.classList.toggle('on', i === next))
-  }
-  const typeNotice = () => {
-    typed.textContent = ''
-    let n = 0
-    const step = () => {
-      n += 1
-      typed.textContent = full.slice(0, n)
-      if (n < full.length) timer = window.setTimeout(step, 28)
-      else timer = window.setTimeout(advance, 900)
-    }
-    step()
+  const show = (next: number) => {
+    sheets.forEach((sheet, i) => sheet.classList.toggle('on', i === next))
+    marks.forEach((mark, i) => mark.classList.toggle('on', i === next))
   }
   const advance = () => {
-    index = (index + 1) % BEATS.length
-    showBeat(index)
-    if (BEATS[index] === 'notice') typeNotice()
-    else timer = window.setTimeout(advance, 2400)
+    index = (index + 1) % sheets.length
+    show(index)
+    timer = window.setTimeout(advance, 2800)
   }
-  showBeat(0)
-  typeNotice()
+  show(0)
+  timer = window.setTimeout(advance, 2800)
   window.addEventListener('pagehide', () => window.clearTimeout(timer))
 }
