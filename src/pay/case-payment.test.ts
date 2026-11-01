@@ -228,6 +228,38 @@ describe('case remainder payment', () => {
     assert.equal(fullOk?.status, 201)
   })
 
+  it('applies a country of residence only after an HTX-related check', async () => {
+    const db = sqliteDb(migrationSql())
+    await seedPaid(db, 'order-htx', 'high')
+    await db.prepare('UPDATE check_orders SET input_json = ?, result_json = ? WHERE id = ?').bind(
+      JSON.stringify({ ...input, exchange: 'htx' }),
+      JSON.stringify({
+        ok: true,
+        verdict: 'high',
+        traceFacts: { addressesCount: 2, htxLinked: false },
+        recommendation: { status: 'blocked_need_country', flags: ['HTX_COUNTRY_REQUIRED'], canOpenCase: false, tier: 'light' },
+      }),
+      'order-htx',
+    ).run()
+    const declined = await handleApi(new Request('http://thaw.test/api/check-orders/order-htx/residence', { method: 'POST', body: JSON.stringify({ clientCountry: 'gb' }) }), env(db))
+    assert.equal(declined?.status, 200)
+    const declinedBody = (await declined!.json()) as { result: { recommendation: { status: string; reasonId: string; canOpenCase: boolean } } }
+    assert.equal(declinedBody.result.recommendation.status, 'refused')
+    assert.equal(declinedBody.result.recommendation.reasonId, 'HTX_UK_EU_CLIENT')
+    assert.equal(declinedBody.result.recommendation.canOpenCase, false)
+
+    const allowed = await handleApi(new Request('http://thaw.test/api/check-orders/order-htx/residence', { method: 'POST', body: JSON.stringify({ clientCountry: 'TR' }) }), env(db))
+    const allowedBody = (await allowed!.json()) as { result: { recommendation: { status: string; canOpenCase: boolean; reasonId: string } } }
+    assert.equal(allowed?.status, 200)
+    assert.equal(allowedBody.result.recommendation.canOpenCase, true)
+    assert.notEqual(allowedBody.result.recommendation.reasonId, 'HTX_UK_EU_CLIENT')
+
+    await seedPaid(db, 'order-plain', 'high')
+    const skip = await handleApi(new Request('http://thaw.test/api/check-orders/order-plain/residence', { method: 'POST', body: JSON.stringify({ clientCountry: 'DE' }) }), env(db))
+    assert.equal(skip?.status, 409)
+    assert.equal(((await skip!.json()) as { code: string }).code, 'country_not_needed')
+  })
+
   it('marks a fully credited case paid without a second invoice', async () => {
     const db = sqliteDb(migrationSql())
     await seedPaid(db, 'order-covered', 'high', 49_000_000)

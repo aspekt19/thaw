@@ -221,7 +221,7 @@ button:disabled, .action:disabled { opacity: 0.45; cursor: not-allowed; }
   height: 100%;
   min-height: 0;
 }
-.stack { position: relative; flex: 1; min-height: 460px; }
+.file-stack { position: relative; flex: 1; min-height: 460px; }
 .stack-back {
   position: absolute;
   border-radius: 12px;
@@ -499,7 +499,7 @@ textarea { min-height: 140px; }
   nav a:not(.nav-go) { display: none; }
   .brand img { height: 34px; }
   .band { padding: 48px 0; }
-  .stack { min-height: 420px; width: 100%; }
+  .file-stack { min-height: 420px; width: 100%; }
   .dossier { width: 100%; }
   .orb-y { top: 52%; right: -18%; opacity: 0.34; }
   .orb-b { bottom: -8%; }

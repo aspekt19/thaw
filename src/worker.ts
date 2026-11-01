@@ -1,12 +1,12 @@
 import { clientIp, createFetchComplete } from '@thaw/guard'
 import { liveBanList } from './chance/banlist.ts'
-import { createServHooks, runChanceCheck, type ChanceDeps } from './chance/check.ts'
+import { createServHooks, recommendationWithCountry, runChanceCheck, type ChanceDeps, type PublicResult } from './chance/check.ts'
 import { PAID_PATH_PRICE_USD } from './chance/constants.ts'
 import { defaultLimitConfig } from './chance/limits.ts'
 import { parseChanceInput, type ChanceInput } from './chance/parse.ts'
 import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
-import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, type CaseRow } from './db/d1-store.ts'
+import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, updatePaidResult, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
 import { LOW_CHANCE_WARNINGS, NEED_COUNTRY_NOTE, choiceResult, chooseTier } from './chance/tier.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
@@ -123,6 +123,11 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   if (path === '/api/check-orders' || path === '/v1/check-orders') {
     if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
     return createOrder(request, env)
+  }
+  const residence = /^\/(?:api|v1)\/check-orders\/([^/]+)\/residence$/.exec(path)
+  if (residence) {
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
+    return setResidence(request, env, decodeURIComponent(residence[1] ?? ''))
   }
   const confirm = /^\/(?:api|v1)\/check-orders\/([^/]+)\/confirm$/.exec(path)
   if (confirm) {
@@ -251,6 +256,36 @@ async function confirmOrder(request: Request, env: Env, orderId: string): Promis
   })
   if (!stored) return json({ ok: false, code: 'reused', error: 'Этот перевод уже использован.' }, 409)
   return json(result, 200)
+}
+
+async function setResidence(request: Request, env: Env, orderId: string): Promise<Response> {
+  const order = await getOrder(env.DB, orderId)
+  if (!order || order.status !== 'paid' || !order.result_json) {
+    return json({ ok: false, code: 'unpaid', error: 'The result is available after the check is paid.' }, 402)
+  }
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
+  }
+  const raw = body && typeof body === 'object' ? (body as { clientCountry?: unknown }).clientCountry : undefined
+  if (typeof raw !== 'string' || !/^[A-Za-z]{2}$/.test(raw.trim())) {
+    return json({ ok: false, code: 'country', error: 'Send the country of residence as a two-letter code.' }, 400)
+  }
+  const stored = JSON.parse(order.result_json) as PublicResult
+  const input = JSON.parse(order.input_json) as ChanceInput
+  const trace = stored.traceFacts ?? { addressesCount: null, htxLinked: false }
+  if (input.exchange !== 'htx' && trace.htxLinked !== true) {
+    return json({ ok: false, code: 'country_not_needed', error: 'This check does not need a country of residence.' }, 409)
+  }
+  const recommendation = recommendationWithCountry(input, stored.verdict, trace, raw.trim().toUpperCase())
+  const next: PublicResult = { ...stored, recommendation }
+  const saved = await updatePaidResult(env.DB, order.id, JSON.stringify(next))
+  if (!saved) return json({ ok: false, code: 'not_found', error: 'The result was not stored.' }, 404)
+  const fresh = await getOrder(env.DB, order.id)
+  if (!fresh) return json({ ok: false, code: 'not_found', error: 'Заказ не найден.' }, 404)
+  return json(orderView(env, fresh), 200)
 }
 
 async function readOrder(env: Env, orderId: string): Promise<Response> {

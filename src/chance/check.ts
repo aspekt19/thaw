@@ -110,6 +110,8 @@ export type PublicResult = {
     lightBlockedNote: string | null
     flags: Flag[]
   } | null
+  /** Facts from the deposit trace used by the tier rules. htxLinked is not a client answer. */
+  traceFacts: { addressesCount: number | null; htxLinked: boolean }
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
 
@@ -276,10 +278,20 @@ export async function runChanceCheck(
     disclaimer: DISCLAIMER,
     depositExplorer: depositLink(input.chain, input.deposit),
     recommendation: recommendationFor(input, decision.verdict, lookup),
+    traceFacts: { addressesCount: knownAddresses(lookup), htxLinked: htxLinkedFromLookup(lookup) },
     paidPath: paidPathView(deps),
   }
   await deps.store.writeCache(key, result, now, deps.limits.cacheTtlMs)
   return result
+}
+
+/**
+ * Whether the deposit trace shows the funds touched HTX or another sanctioned exchange.
+ * TODO: the first-hop lookup returns addresses only. It has no labeled exchange or sanctions list,
+ * so a link cannot be detected yet. Do not guess, and do not read this from the form.
+ */
+export function htxLinkedFromLookup(_lookup: HopLookup): boolean {
+  return false
 }
 
 function knownAddresses(lookup: HopLookup): number | null {
@@ -306,13 +318,33 @@ function tierExchange(exchange: ChanceInput['exchange']): TierExchange {
   return 'other'
 }
 
+/** Re-run the tier rules after the person gives a country of residence on the result screen. */
+export function recommendationWithCountry(
+  input: ChanceInput,
+  verdict: Verdict,
+  trace: { addressesCount: number | null; htxLinked: boolean },
+  clientCountry: string,
+): PublicResult['recommendation'] {
+  return tierRecommendation(input, verdict, trace.addressesCount, trace.htxLinked, clientCountry)
+}
+
 function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLookup): PublicResult['recommendation'] {
+  return tierRecommendation(input, verdict, knownAddresses(lookup), htxLinkedFromLookup(lookup), undefined)
+}
+
+function tierRecommendation(
+  input: ChanceInput,
+  verdict: Verdict,
+  addressesCount: number | null,
+  htxLinked: boolean,
+  clientCountry: string | undefined,
+): PublicResult['recommendation'] {
   if (verdict === 'cannot_help') return null
   const picked = recommendTier(
     {
       exchange: tierExchange(input.exchange),
       verdict,
-      addressesCount: knownAddresses(lookup),
+      addressesCount,
       fundsSources: input.fundsSources ?? sourcesFromOrigin(input.origin),
       priorExchangeRejection: input.priorExchangeRejection ?? input.priorRefusal,
       priorRoundsCount: input.priorRoundsCount,
@@ -324,8 +356,8 @@ function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLook
       holdType: input.holdType,
       // A Travel Rule cause is confirmed only by our own check. The form cannot set this.
       travelRuleConfirmed: false,
-      clientCountry: input.clientCountry,
-      htxLinked: input.htxLinked,
+      clientCountry,
+      htxLinked,
     },
     PRODUCT_TIER_CONFIG,
   )

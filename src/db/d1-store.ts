@@ -74,6 +74,15 @@ export async function insertOrder(db: SqlDb, row: Omit<OrderRow, 'tx_hash' | 're
   }
 }
 
+/** Replaces the stored check result after the person answers a follow-up on the result screen. */
+export async function updatePaidResult(db: SqlDb, orderId: string, resultJson: string): Promise<boolean> {
+  const saved = await db
+    .prepare("UPDATE check_orders SET result_json = ? WHERE id = ? AND status = 'paid'")
+    .bind(resultJson, orderId)
+    .run()
+  return (saved.meta?.changes ?? 0) > 0
+}
+
 export async function getOrder(db: SqlDb, id: string): Promise<OrderRow | null> {
   return db.prepare('SELECT * FROM check_orders WHERE id = ?').bind(id).first<OrderRow>()
 }

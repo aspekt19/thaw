@@ -23,8 +23,6 @@ export type ChanceInput = {
   priorRoundsCount?: number
   disputedDepositsCount?: number
   holdType?: HoldType
-  clientCountry?: string
-  htxLinked?: boolean
   clientId?: string
   captchaToken?: string
 }
@@ -95,9 +93,8 @@ export function parseChanceInput(body: unknown): ParseResult {
   }
   const captchaToken = typeof row.captchaToken === 'string' ? row.captchaToken : undefined
   const holdType = readEnum(row.holdType, HOLDS) ?? undefined
-  const clientCountry = readCountry(row.clientCountry)
-  if (clientCountry === 'bad') return { ok: false, error: 'Country of residence should be a two-letter code.' }
   // The client cannot confirm a Travel Rule cause. That flag is set only after our own check.
+  // HTX linkage and country of residence are not form fields. The check sets htxLinked, and country is asked later if needed.
   return {
     ok: true,
     value: {
@@ -117,8 +114,6 @@ export function parseChanceInput(body: unknown): ParseResult {
       priorRoundsCount,
       disputedDepositsCount,
       holdType,
-      clientCountry,
-      htxLinked: row.htxLinked === true || row.htxLinked === 'yes',
       clientId,
       captchaToken,
     },
@@ -159,14 +154,6 @@ function documentsFromEvidence(evidence: Evidence[]): boolean | null {
   if (evidence.some((item) => item === 'bank_statements' || item === 'income_docs' || item === 'exchange_export')) return true
   if (evidence.length === 0) return null
   return false
-}
-
-function readCountry(value: unknown): string | undefined | 'bad' {
-  if (value === undefined || value === null || value === '') return undefined
-  if (typeof value !== 'string') return 'bad'
-  const code = value.trim().toUpperCase()
-  if (!/^[A-Z]{2}$/.test(code)) return 'bad'
-  return code
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createServHooks, runChanceCheck, type ChanceDeps, type PublicResult } from './check.ts'
+import { createServHooks, htxLinkedFromLookup, runChanceCheck, type ChanceDeps, type PublicResult } from './check.ts'
 import { PAID_PATH_PRICE_USD, TRANSFER_TOPIC, usdToMicro } from './constants.ts'
 import { tronHexToBase58 } from './address.ts'
 import { asAsyncStore, createStore, type LimitStore } from './limits.ts'
@@ -540,5 +540,19 @@ describe('evm lookup url', () => {
     assert.ok(result.reasons.includes(REASON.banBase))
     assert.equal(result.depositExplorer, `https://basescan.org/tx/${tx}`)
     assert.equal(result.verdict, 'medium')
+  })
+})
+
+describe('HTX link from the trace', () => {
+  it('stays false until a labeled exchange source exists', () => {
+    assert.equal(htxLinkedFromLookup({
+      status: 'ok',
+      detail: 'sample',
+      sender: 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb',
+      hop1: ['TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'],
+      firstHopOk: true,
+      amountMatch: 'match',
+      dateMatch: 'match',
+    }), false)
   })
 })

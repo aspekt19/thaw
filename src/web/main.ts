@@ -180,12 +180,12 @@ const COUNTRIES: Array<[string, string]> = [
   ['BR', 'Brazil'], ['IN', 'India'], ['UA', 'Ukraine'], ['GE', 'Georgia'], ['KZ', 'Kazakhstan'],
 ]
 
-function fillCountries(): void {
-  const select = document.querySelector<HTMLSelectElement>('#clientCountry')
-  if (!select || select.options.length > 1) return
+function countrySelect(): HTMLSelectElement {
+  const select = document.createElement('select')
+  select.required = true
   const blank = document.createElement('option')
   blank.value = ''
-  blank.textContent = 'Select a country'
+  blank.textContent = 'Country of residence'
   select.append(blank)
   for (const [code, name] of COUNTRIES) {
     const option = document.createElement('option')
@@ -193,21 +193,8 @@ function fillCountries(): void {
     option.textContent = name
     select.append(option)
   }
+  return select
 }
-
-function showPlace(): void {
-  const exchange = document.querySelector<HTMLSelectElement>('#exchange')?.value
-  const linked = document.querySelector<HTMLInputElement>('#htxLinked')?.checked === true
-  const needed = exchange === 'htx' || linked
-  document.querySelector('#place-fields')?.toggleAttribute('hidden', !needed)
-  const country = document.querySelector<HTMLSelectElement>('#clientCountry')
-  if (country) country.required = needed
-}
-
-fillCountries()
-document.querySelector('#exchange')?.addEventListener('change', showPlace)
-document.querySelector('#htxLinked')?.addEventListener('change', showPlace)
-showPlace()
 
 function stopPoll(): void {
   window.clearInterval(pollTimer)
@@ -294,15 +281,13 @@ function payload(form: HTMLFormElement): Record<string, unknown> {
       lists.set(key, list)
       return
     }
-    if (key === 'priorExchangeRejection' || key === 'htxLinked') out[key] = true
+    if (key === 'priorExchangeRejection') out[key] = true
     else out[key] = value
   })
   for (const [key, list] of lists) out[key] = list
   if (!out.fundsSources) out.fundsSources = []
   if (!out.evidence) out.evidence = []
-  if (!out.clientCountry) delete out.clientCountry
   if (!out.priorExchangeRejection) out.priorExchangeRejection = false
-  if (!out.htxLinked) out.htxLinked = false
   if (!out.priorExchangeRejection) delete out.priorRoundsCount
   return out
 }
@@ -412,6 +397,7 @@ async function paintResult(): Promise<void> {
     root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
   }
   if (gate?.flags?.includes('TRAVEL_RULE_VERIFY_FIRST')) root.append(noteBox(TRAVEL_RULE_VERIFY_NOTE))
+  if (needsCountry) root.append(countryAsk(id))
   if (gate?.tier && !refused && !needsCountry && result.verdict !== 'cannot_help') {
     root.append(recommendationBlock(gate))
   }
@@ -423,6 +409,46 @@ function noteBox(text: string): HTMLElement {
   note.className = 'warn-box'
   note.textContent = text
   return note
+}
+
+function countryAsk(orderId: string): HTMLElement {
+  const form = document.createElement('form')
+  const label = document.createElement('label')
+  label.htmlFor = 'result-country'
+  label.textContent = 'Country of residence'
+  const select = countrySelect()
+  select.id = 'result-country'
+  const button = document.createElement('button')
+  button.type = 'submit'
+  button.className = 'action'
+  button.textContent = 'Continue'
+  const error = document.createElement('p')
+  error.className = 'warn'
+  error.hidden = true
+  form.append(label, select, button, error)
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    void sendResidence(orderId, select.value, button, error)
+  })
+  return form
+}
+
+async function sendResidence(orderId: string, country: string, button: HTMLButtonElement, error: HTMLElement): Promise<void> {
+  button.disabled = true
+  error.hidden = true
+  const response = await fetch(`/api/check-orders/${orderId}/residence`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ clientCountry: country }),
+  })
+  const body = (await response.json()) as { code?: string; error?: string; result?: { verdict?: string } }
+  button.disabled = false
+  if (!response.ok || !body.result?.verdict) {
+    error.hidden = false
+    error.textContent = say(body.code, body.error)
+    return
+  }
+  void paintResult()
 }
 
 function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLElement {
