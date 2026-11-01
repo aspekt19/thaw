@@ -4,7 +4,7 @@ import '@fontsource/geist-sans/latin-600.css'
 import '@fontsource/geist-sans/latin-700.css'
 import '@fontsource/geist-mono/latin-500.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
-import { LIGHT_PICK_NOTE, downgradeWarning, type RuleId } from '../chance/tier.ts'
+import { LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
 
 const REASON_EN: Record<string, string> = {
   [REASON.police]: 'The notice says the hold is for the police or a court.',
@@ -57,7 +57,8 @@ const PAY_ERROR: Record<string, string> = {
   reused: 'That transfer was already used on another invoice.',
   payment_not_configured: 'This server has no USDC address, so it cannot open an invoice.',
   unpaid: 'Open a case only after the check is paid.',
-  verdict: 'A file opens only when the chance is high or medium.',
+  verdict: 'We do not open a file for this notice.',
+  blocked_low_chance: 'A low chance stays closed until you confirm you still want the file.',
   tier: 'This check already has a file on the other price.',
   input: 'Check the form. Something required is missing or not in the right shape.',
   json: 'The server could not read that request.',
@@ -107,6 +108,9 @@ type Result = {
     missing: string
     priceUsd: number
     note: string
+    status?: 'ok' | 'blocked_low_chance'
+    canOpenCase?: boolean
+    lowChance?: { required: boolean; warnings: Array<{ place: LowChancePlace; text: string }> }
   } | null
 }
 
@@ -128,10 +132,14 @@ type CaseInvoice = {
   recipient?: string
   amountAtomic?: string | null
   amountUsd?: string | null
+  verdict?: string | null
+  coverNote?: string | null
+  lowConfirmedAt?: number | null
 }
 
 const ORDER_KEY = 'thaw.order'
 const CASE_KEY = 'thaw.case'
+const PENDING_KEY = 'thaw.pendingCase'
 const TX_KEY = 'thaw.tx'
 const CASE_TX_KEY = 'thaw.caseTx'
 
@@ -372,15 +380,22 @@ async function paintResult(): Promise<void> {
   root.append(subhead('Next step'))
   root.append(paragraph(nextStep(result.verdict)))
   root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
-  if ((result.verdict === 'high' || result.verdict === 'medium') && result.recommendation?.tier) {
+  if (result.recommendation?.tier && result.verdict !== 'cannot_help') {
     root.append(recommendationBlock(result.recommendation))
   }
   stamp(root)
 }
 
 function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLElement {
+  const low = rec.lowChance?.required === true
   const box = document.createElement('section')
   box.className = 'recommend'
+  if (low) {
+    const chance = document.createElement('p')
+    chance.className = 'warn-box'
+    chance.textContent = lowText(rec, 'chance_result')
+    box.append(chance)
+  }
   const title = document.createElement('h2')
   title.textContent = rec.tier === 'full' ? 'We recommend the Full file' : 'We recommend the Light file'
   const price = document.createElement('p')
@@ -392,12 +407,12 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
   note.textContent = rec.note
   box.append(title, price, why, note)
 
+  const offer = document.createElement('div')
   const picks = document.createElement('div')
   picks.className = 'copy-row'
   const light = tierPick('light', 'Light file, $49', rec.tier === 'light')
   const full = tierPick('full', 'Full file, $79', rec.tier === 'full')
   picks.append(light, full)
-  box.append(picks)
 
   const extra = document.createElement('div')
   const warning = document.createElement('p')
@@ -414,9 +429,19 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
   const open = document.createElement('button')
   open.type = 'button'
   open.className = 'action cta'
-  open.textContent = rec.tier === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
+  const stop = document.createElement('button')
+  stop.type = 'button'
+  stop.className = 'ghost'
+  stop.textContent = 'No, stop here'
+  stop.hidden = !low
+  const stopped = document.createElement('p')
+  stopped.hidden = true
+  stopped.textContent = 'We will not open a file unless you choose to continue.'
   let chosen: 'light' | 'full' = rec.tier
+  let halted = false
   const refresh = () => {
+    offer.hidden = halted
+    stopped.hidden = !halted
     light.classList.toggle('on', chosen === 'light')
     full.classList.toggle('on', chosen === 'full')
     const down = rec.tier === 'full' && chosen === 'light'
@@ -425,17 +450,33 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
     confirm.hidden = !down
     if (down) warning.textContent = downgradeWarning(rec.reasonId)
     if (up) warning.textContent = LIGHT_PICK_NOTE
-    open.textContent = chosen === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
+    open.textContent = low ? 'Yes, continue' : chosen === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
     open.disabled = down && !checkbox.checked
   }
   light.addEventListener('click', () => { chosen = 'light'; refresh() })
   full.addEventListener('click', () => { chosen = 'full'; refresh() })
   checkbox.addEventListener('change', refresh)
-  open.addEventListener('click', () => void openCase(chosen, open))
-  extra.append(warning, confirm, open)
-  box.append(extra)
+  open.addEventListener('click', () => {
+    if (low) {
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify({ orderId: sessionStorage.getItem(ORDER_KEY), tier: chosen }))
+      sessionStorage.removeItem(CASE_KEY)
+      location.hash = 'case'
+      return
+    }
+    void openCase(chosen, open, false)
+  })
+  stop.addEventListener('click', () => { halted = true; refresh() })
+  extra.append(warning, confirm, open, stop)
+  offer.append(picks, extra)
+  box.append(offer, stopped)
   refresh()
   return box
+}
+
+function lowText(rec: NonNullable<Result['recommendation']>, place: LowChancePlace): string {
+  return rec.lowChance?.warnings.find((item) => item.place === place)?.text
+    ?? LOW_CHANCE_WARNINGS.find((item) => item.place === place)?.text
+    ?? ''
 }
 
 function tierPick(tier: 'light' | 'full', label: string, on: boolean): HTMLButtonElement {
@@ -451,23 +492,23 @@ function nextStep(verdict: string): string {
   if (verdict === 'high' || verdict === 'medium') {
     return 'You can open a light file at $49 or a full file at $79. The check you paid is subtracted. The remainder is a second USDC invoice, and the file stays unpaid until that transfer is verified.'
   }
-  if (verdict === 'low') return 'We will not open a file on a low chance.'
+  if (verdict === 'low') return 'A low chance can still open a Full file, only after you read the warning and confirm. We do not promise the exchange will release the withdrawal.'
   return 'We will not prepare papers for this notice.'
 }
 
-async function openCase(tier: 'light' | 'full', button: HTMLButtonElement): Promise<void> {
+async function openCase(tier: 'light' | 'full', button: HTMLButtonElement, confirmedLow: boolean): Promise<void> {
   const id = sessionStorage.getItem(ORDER_KEY)
   if (!id) return
   button.disabled = true
   const response = await fetch('/api/cases', {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ orderId: id, tier }),
+    body: JSON.stringify({ orderId: id, tier, userConfirmedLowChance: confirmedLow }),
   })
   const body = (await response.json()) as CaseInvoice
   button.disabled = false
   if (!body.caseId) {
-    const root = document.querySelector('#result-root')
+    const root = document.querySelector(location.hash === '#case' ? '#case-root' : '#result-root')
     const note = document.createElement('p')
     note.className = 'warn'
     note.textContent = say(body.code, body.error)
@@ -476,7 +517,9 @@ async function openCase(tier: 'light' | 'full', button: HTMLButtonElement): Prom
   }
   sessionStorage.setItem(CASE_KEY, body.caseId)
   sessionStorage.removeItem(CASE_TX_KEY)
-  location.hash = 'case'
+  sessionStorage.removeItem(PENDING_KEY)
+  if (location.hash === '#case') void paintCase()
+  else location.hash = 'case'
 }
 
 async function paintCase(): Promise<void> {
@@ -486,7 +529,12 @@ async function paintCase(): Promise<void> {
   if (!root) return
   root.replaceChildren()
   if (!id) {
-    root.append(heading('No file invoice'), paragraph('Open a file from a high or medium result.'))
+    const pending = readPending()
+    if (pending) {
+      await paintLowGate(root, pending)
+      return
+    }
+    root.append(heading('No file invoice'), paragraph('Open a file from the chance result.'))
     return
   }
   const row = await getJson<CaseInvoice>(`/api/cases/${id}`)
@@ -497,11 +545,13 @@ async function paintCase(): Promise<void> {
   if (row.paid && !row.amountAtomic) {
     root.append(heading('The file is paid'), paragraph('The check fee covered the whole price, so there is no second transfer.'))
     root.append(paragraph('Preparing the papers in the browser is not on this page yet.'))
+    appendCaseNotes(root, row)
     return
   }
   if (row.paid) {
     root.append(heading('The remainder is paid'), paragraph(`${tierName(row.tier)} is paid. The check credit was ${row.feeUsd ?? ''} USD of the ${row.priceUsd ?? ''} USD price.`))
     root.append(paragraph('Preparing the papers in the browser is not on this page yet. Payment does not mean the withdrawal will be released.'))
+    appendCaseNotes(root, row)
     return
   }
   root.append(invoiceBlock({
@@ -528,7 +578,63 @@ async function paintCase(): Promise<void> {
     hashKey: CASE_TX_KEY,
     onSubmit: (tx) => confirm(`/api/cases/${id}/confirm`, tx, CASE_TX_KEY),
   }))
+  appendCaseNotes(root, row)
   pollTimer = window.setInterval(() => void refreshCase(id), 4000)
+}
+
+function appendCaseNotes(root: Element, row: CaseInvoice): void {
+  if (row.coverNote) {
+    const note = document.createElement('p')
+    note.className = 'warn-box'
+    note.textContent = row.coverNote
+    root.append(note)
+  }
+  if (row.tier === 'light') root.append(paragraph(upgradeOfferText()))
+}
+
+function readPending(): { orderId: string; tier: 'light' | 'full' } | null {
+  const raw = sessionStorage.getItem(PENDING_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as { orderId?: unknown; tier?: unknown }
+    if (typeof parsed.orderId !== 'string' || (parsed.tier !== 'light' && parsed.tier !== 'full')) return null
+    if (parsed.orderId !== sessionStorage.getItem(ORDER_KEY)) return null
+    return { orderId: parsed.orderId, tier: parsed.tier }
+  } catch {
+    return null
+  }
+}
+
+async function paintLowGate(root: Element, pending: { orderId: string; tier: 'light' | 'full' }): Promise<void> {
+  const order = await getJson<Order>(`/api/check-orders/${pending.orderId}`)
+  const warnings = order?.result?.recommendation?.lowChance?.warnings ?? LOW_CHANCE_WARNINGS
+  const checkout = warnings.find((item) => item.place === 'checkout')?.text ?? ''
+  const boxText = warnings.find((item) => item.place === 'checkout_checkbox')?.text ?? ''
+  root.append(heading('Confirm before the file opens'))
+  root.append(paragraph(pending.tier === 'full' ? 'Full file, $79. The check you already paid is subtracted. The file stays unpaid until the remainder is verified.' : 'Light file, $49. The check you already paid is subtracted. The file stays unpaid until the remainder is verified.'))
+  const warning = document.createElement('p')
+  warning.className = 'warn-box'
+  warning.textContent = checkout
+  const confirm = document.createElement('label')
+  confirm.className = 'field check'
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  const text = document.createElement('span')
+  text.textContent = boxText
+  confirm.append(checkbox, text)
+  const open = document.createElement('button')
+  open.type = 'button'
+  open.className = 'action cta'
+  open.textContent = 'Open the file'
+  open.disabled = true
+  checkbox.addEventListener('change', () => { open.disabled = !checkbox.checked })
+  open.addEventListener('click', () => {
+    if (!checkbox.checked) return
+    void openCase(pending.tier, open, true)
+  })
+  root.append(warning, confirm, open)
+  if (pending.tier === 'light') root.append(paragraph(upgradeOfferText()))
+  stamp(root)
 }
 
 async function refreshCase(id: string): Promise<void> {

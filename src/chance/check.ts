@@ -19,7 +19,7 @@ import { screenAddresses, type BanList } from './banlist.ts'
 import { lookupFirstHop, type HopLookup } from './lookup.ts'
 import { cacheKey, userKey, utcDay, type AsyncLimitStore, type LimitConfig } from './limits.ts'
 import { decide, type BanState } from './rules.ts'
-import { MISSING_LINE, PRODUCT_TIER_CONFIG, REASON_LINE, TIER_NOTE, recommendTier, type Exchange as TierExchange, type RuleId } from './tier.ts'
+import { MISSING_LINE, PRODUCT_TIER_CONFIG, REASON_LINE, TIER_NOTE, recommendTier, type Exchange as TierExchange, type LowChanceWarning, type RuleId } from './tier.ts'
 import type { ChanceInput } from './parse.ts'
 
 const CATEGORY_LIST = [
@@ -92,7 +92,10 @@ export type PublicResult = {
   disclaimer: string
   /** Public explorer page for the deposit the person entered. Base uses basescan.org. */
   depositExplorer: string | null
-  /** Set only for a high or medium chance. SERV document labels are not connected, so those rules do not fire. */
+  /**
+   * Set for high, medium, and low. A low chance recommends Full and stays blocked until the person confirms.
+   * SERV document labels are not connected, so those rules do not fire.
+   */
   recommendation: {
     tier: 'light' | 'full'
     reasonId: RuleId
@@ -100,6 +103,9 @@ export type PublicResult = {
     missing: string
     priceUsd: number
     note: string
+    status: 'ok' | 'blocked_low_chance'
+    canOpenCase: boolean
+    lowChance: { required: boolean; warnings: LowChanceWarning[] }
   } | null
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
@@ -297,7 +303,7 @@ function tierExchange(exchange: ChanceInput['exchange']): TierExchange {
 }
 
 function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLookup): PublicResult['recommendation'] {
-  if (verdict !== 'high' && verdict !== 'medium') return null
+  if (verdict === 'cannot_help') return null
   const picked = recommendTier(
     {
       exchange: tierExchange(input.exchange),
@@ -322,6 +328,9 @@ function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLook
     missing: MISSING_LINE[picked.reason],
     priceUsd: picked.tier === 'full' ? PRODUCT_TIER_CONFIG.price.full : PRODUCT_TIER_CONFIG.price.light,
     note: TIER_NOTE,
+    status: picked.status === 'blocked_low_chance' ? 'blocked_low_chance' : 'ok',
+    canOpenCase: picked.canOpenCase,
+    lowChance: { required: picked.lowChanceAck.required, warnings: picked.lowChanceAck.warnings },
   }
 }
 

@@ -8,6 +8,7 @@ import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
 import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
+import { LOW_CHANCE_WARNINGS } from './chance/tier.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
 
 export interface Env {
@@ -284,7 +285,7 @@ async function openCase(request: Request, env: Env): Promise<Response> {
   } catch {
     return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
   }
-  const row = body && typeof body === 'object' ? (body as { orderId?: unknown; tier?: unknown }) : {}
+  const row = body && typeof body === 'object' ? (body as { orderId?: unknown; tier?: unknown; userConfirmedLowChance?: unknown }) : {}
   if (typeof row.orderId !== 'string' || (row.tier !== 'light' && row.tier !== 'full')) {
     return json({ ok: false, code: 'input', error: 'Send orderId and tier light or full.' }, 400)
   }
@@ -293,15 +294,19 @@ async function openCase(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, code: 'unpaid', error: 'A case opens only after the check is paid.' }, 402)
   }
   const verdict = (JSON.parse(order.result_json) as { verdict?: string }).verdict
-  if (verdict !== 'high' && verdict !== 'medium') {
-    return json({ ok: false, code: 'verdict', error: 'A case opens only when the chance is high or medium.' }, 403)
+  const confirmedLow = row.userConfirmedLowChance === true
+  if (verdict === 'low' && !confirmedLow) {
+    return json({ ok: false, code: 'blocked_low_chance', error: 'A low chance stays closed until you confirm you still want the file.' }, 403)
+  }
+  if (verdict !== 'high' && verdict !== 'medium' && verdict !== 'low') {
+    return json({ ok: false, code: 'verdict', error: 'We do not open a file for this notice.' }, 403)
   }
   const existing = await getCaseForOrder(env.DB, order.id)
   if (existing) {
     if (existing.tier && existing.tier !== row.tier) {
       return json({ ok: false, code: 'tier', error: 'This check already has a case on the other tier.' }, 409)
     }
-    return json(caseView(env, existing, true), 200)
+    return json(await casePayload(env, existing, true), 200)
   }
   const fallback = row.tier === 'light' ? '49' : '79'
   const priceMicro = parseUsdToMicro(row.tier === 'light' ? env.THAW_CASE_LIGHT_USD : env.THAW_CASE_FULL_USD, fallback)
@@ -327,11 +332,12 @@ async function openCase(request: Request, env: Env): Promise<Response> {
       status: net === 0 ? 'paid' : 'awaiting_payment',
       chain: net === 0 ? null : chain,
       amountAtomic,
+      lowConfirmedAt: verdict === 'low' ? Date.now() : null,
     })
     if (!ok) continue
     const saved = await getCase(env.DB, id)
     if (!saved) return json({ ok: false, code: 'internal', error: 'The case was not stored.' }, 500)
-    return json(caseView(env, saved, false), 201)
+    return json(await casePayload(env, saved, false), 201)
   }
   return json({ ok: false, code: 'amount', error: 'Could not reserve a unique amount. Try again.' }, 503)
 }
@@ -339,13 +345,13 @@ async function openCase(request: Request, env: Env): Promise<Response> {
 async function readCase(env: Env, caseId: string): Promise<Response> {
   const row = await getCase(env.DB, caseId)
   if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
-  return json(caseView(env, row, false), 200)
+  return json(await casePayload(env, row, false), 200)
 }
 
 async function confirmCase(request: Request, env: Env, caseId: string): Promise<Response> {
   const row = await getCase(env.DB, caseId)
   if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
-  if (row.status === 'paid') return json(caseView(env, row, false), 200)
+  if (row.status === 'paid') return json(await casePayload(env, row, false), 200)
   let body: unknown
   try {
     body = await request.json()
@@ -371,7 +377,26 @@ async function confirmCase(request: Request, env: Env, caseId: string): Promise<
   if (!stored) return json({ ok: false, code: 'reused', error: 'That transfer was already used.' }, 409)
   const paid = await getCase(env.DB, row.id)
   if (!paid) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
-  return json(caseView(env, paid, false), 200)
+  return json(await casePayload(env, paid, false), 200)
+}
+
+async function casePayload(env: Env, row: CaseRow, existing: boolean): Promise<Record<string, unknown>> {
+  const order = await getOrder(env.DB, row.order_id)
+  let verdict: string | null = null
+  if (order?.result_json) {
+    try {
+      verdict = (JSON.parse(order.result_json) as { verdict?: string }).verdict ?? null
+    } catch {
+      verdict = null
+    }
+  }
+  const cover = verdict === 'low' ? LOW_CHANCE_WARNINGS.find((item) => item.place === 'case_cover_note') : undefined
+  return {
+    ...caseView(env, row, existing),
+    verdict,
+    coverNote: cover?.text ?? null,
+    lowConfirmedAt: row.low_confirmed_at,
+  }
 }
 
 function caseView(env: Env, row: CaseRow, existing: boolean): Record<string, unknown> {

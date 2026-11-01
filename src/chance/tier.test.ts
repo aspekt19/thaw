@@ -45,16 +45,24 @@ describe('tier recommendation', () => {
     })
   }
 
-  it('T13 blocks a low chance until the person confirms', () => {
-    for (const value of [undefined, false] as const) {
-      const result = recommendTier({ ...base, verdict: 'low', userConfirmedLowChance: value })
-      assert.equal(result.status, 'blocked_low_chance')
-      assert.equal(result.canOpenCase, false)
-      assert.equal(result.tier, 'full')
-      assert.equal(result.lowChanceAck.required, true)
-      assert.equal(result.lowChanceAck.confirmed, false)
-      assert.equal(result.lowChanceAck.warnings.length, 4)
-    }
+  it('T13a blocks a low chance when confirmation is missing', () => {
+    const result = recommendTier({ ...base, verdict: 'low' })
+    assert.equal(result.status, 'blocked_low_chance')
+    assert.equal(result.canOpenCase, false)
+    assert.equal(result.tier, 'full')
+    assert.equal(result.lowChanceAck.required, true)
+    assert.equal(result.lowChanceAck.confirmed, false)
+    assert.equal(result.lowChanceAck.warnings.length, 4)
+  })
+
+  it('T13b blocks a low chance when confirmation is false', () => {
+    const result = recommendTier({ ...base, verdict: 'low', userConfirmedLowChance: false })
+    assert.equal(result.status, 'blocked_low_chance')
+    assert.equal(result.canOpenCase, false)
+    assert.equal(result.tier, 'full')
+    assert.equal(result.lowChanceAck.required, true)
+    assert.equal(result.lowChanceAck.confirmed, false)
+    assert.equal(result.lowChanceAck.warnings.length, 4)
   })
 
   it('T14 refuses a case we cannot take', () => {

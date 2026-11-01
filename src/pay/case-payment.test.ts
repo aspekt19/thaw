@@ -192,13 +192,21 @@ describe('case remainder payment', () => {
     assert.equal((await getCase(db, invoice.caseId))?.status, 'awaiting_payment')
 
     await seedPaid(db, 'order-low', 'low')
-    const low = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-low', tier: 'light' }) }), env(db))
-    assert.equal(low?.status, 403)
-    assert.equal(((await low!.json()) as { code: string }).code, 'verdict')
+    const blocked = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-low', tier: 'full', userConfirmedLowChance: false }) }), env(db))
+    assert.equal(blocked?.status, 403)
+    assert.equal(((await blocked!.json()) as { code: string }).code, 'blocked_low_chance')
+    const missing = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-low', tier: 'full' }) }), env(db))
+    assert.equal(((await missing!.json()) as { code: string }).code, 'blocked_low_chance')
+    const openedLow = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-low', tier: 'full', userConfirmedLowChance: true }) }), env(db))
+    assert.equal(openedLow?.status, 201)
+    const lowBody = (await openedLow!.json()) as { coverNote: string; lowConfirmedAt: number; paid: boolean }
+    assert.match(lowBody.coverNote, /falsify/)
+    assert.equal(typeof lowBody.lowConfirmedAt, 'number')
 
     await seedPaid(db, 'order-stop', 'cannot_help')
-    const stopped = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-stop', tier: 'light' }) }), env(db))
+    const stopped = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-stop', tier: 'full', userConfirmedLowChance: true }) }), env(db))
     assert.equal(stopped?.status, 403)
+    assert.equal(((await stopped!.json()) as { code: string }).code, 'verdict')
 
     const unpaid = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'missing', tier: 'light' }) }), env(db))
     assert.equal(unpaid?.status, 402)

@@ -108,6 +108,7 @@ export type CaseRow = {
   chain: string | null
   amount_atomic: string | null
   tx_hash: string | null
+  low_confirmed_at: number | null
 }
 
 export async function insertCase(
@@ -142,12 +143,13 @@ export async function insertCaseInvoice(
     status: 'awaiting_payment' | 'paid'
     chain: string | null
     amountAtomic: string | null
+    lowConfirmedAt: number | null
   },
 ): Promise<boolean> {
   try {
     await db
       .prepare(
-        'INSERT INTO cases (id, order_id, price_micro, fee_credit_micro, net_micro, created_at, status, tier, chain, amount_atomic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO cases (id, order_id, price_micro, fee_credit_micro, net_micro, created_at, status, tier, chain, amount_atomic, low_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
         row.id,
@@ -160,6 +162,7 @@ export async function insertCaseInvoice(
         row.tier,
         row.chain,
         row.amountAtomic,
+        row.lowConfirmedAt,
       )
       .run()
     return true

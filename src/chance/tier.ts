@@ -13,12 +13,12 @@ export interface TierInput {
   disputedDepositsCount: number;          // >= 1
   addressesCount: number | null;          // unique addresses known after check; null = unknown
   fundsSources: FundsSource[];            // multi-select, may be empty
-  priorExchangeRejection: boolean;        // proposal: new form field
-  priorRoundsCount?: number;              // proposal
+  priorExchangeRejection: boolean;        // new form field (decided 2026-11-01)
+  priorRoundsCount?: number;              // new form field (decided 2026-11-01)
   requestedDocs: RequestedDoc[];          // from notice classification; empty = not listed
-  ownershipProofRequested: boolean;       // from notice classification (proposal)
-  evidence: Evidence[];                   // proposal: new form field
-  amountUsd?: number;                     // informational only, not used in rules
+  ownershipProofRequested: boolean;       // from notice classification (decided 2026-11-01)
+  evidence: Evidence[];                   // new form field (decided 2026-11-01)
+  amountUsd?: number;                     // informational only; no amount threshold (decided 2026-11-01)
   userConfirmedLowChance?: boolean;       // must be exactly true to open a case with verdict "low"
 }
 
@@ -149,8 +149,8 @@ export const UPGRADE_REUSE = [
   "documents already collected and the SoF draft",
 ];
 
-/** Product path: a low chance does not open a case. Thresholds stay in config. */
-export const PRODUCT_TIER_CONFIG: TierConfig = { ...DEFAULT_CONFIG, allowLowVerdict: false }
+/** Product path: a low chance opens a Full case only after an explicit confirmation. Thresholds stay in config. */
+export const PRODUCT_TIER_CONFIG: TierConfig = { ...DEFAULT_CONFIG, allowLowVerdict: true, lowVerdictTier: 'full' }
 
 /** One-line English reasons from the tier spec. */
 export const REASON_LINE: Record<RuleId, string> = {
@@ -183,8 +183,16 @@ export const TIER_NOTE = "This is document preparation only, not legal advice, a
 
 export const LIGHT_PICK_NOTE = 'You chose the Full case. It adds wallet ownership proof, multi-provider screening, one extra round and a formal complaint draft.'
 
-export function downgradeWarning(reason: RuleId): string {
-  return `We recommended the Full case because ${REASON_LINE[reason]} The Light case does not include ${MISSING_LINE[reason]}. If the exchange asks for more, you can upgrade later by paying the difference. A later upgrade from Light to Full costs $30 extra.`
+/** English upgrade line. The dollar amount comes from upgradeQuote(), not a fixed string. */
+export function upgradeOfferText(config: TierConfig = DEFAULT_CONFIG): string {
+  const quote = upgradeQuote('light', config)
+  if (!quote.allowed) return ''
+  return `You can upgrade to the Full case at any time by paying the $${quote.payUsd} difference. We keep the work already done in your Light case.`
+}
+
+export function downgradeWarning(reason: RuleId, config: TierConfig = DEFAULT_CONFIG): string {
+  const quote = upgradeQuote('light', config)
+  return `We recommended the Full case because ${REASON_LINE[reason]} The Light case does not include ${MISSING_LINE[reason]}. If the exchange asks for more, you can upgrade later by paying the difference. A later upgrade from Light to Full costs $${quote.payUsd} extra. ${upgradeOfferText(config)}`
 }
 
 export function upgradeQuote(current: Tier, c: TierConfig = DEFAULT_CONFIG): UpgradeQuote {
