@@ -106,6 +106,8 @@ export type PublicResult = {
     status: 'ok' | 'blocked_low_chance'
     canOpenCase: boolean
     lowChance: { required: boolean; warnings: LowChanceWarning[] }
+    lightAllowed: boolean
+    lightBlockedNote: string | null
   } | null
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
@@ -331,6 +333,8 @@ function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLook
     status: picked.status === 'blocked_low_chance' ? 'blocked_low_chance' : 'ok',
     canOpenCase: picked.canOpenCase,
     lowChance: { required: picked.lowChanceAck.required, warnings: picked.lowChanceAck.warnings },
+    lightAllowed: picked.lightAllowed,
+    lightBlockedNote: picked.lightBlockedNote,
   }
 }
 

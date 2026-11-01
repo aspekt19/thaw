@@ -3,7 +3,7 @@ import '@fontsource/inter-tight/latin-700.css'
 import '@fontsource/source-serif-4/latin-400.css'
 import '@fontsource/source-serif-4/latin-600.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
-import { LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
+import { LIGHT_BLOCKED_NOTE, LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, choiceResult, chooseTier, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
 
 const REASON_EN: Record<string, string> = {
   [REASON.police]: 'The notice says the hold is for the police or a court.',
@@ -58,6 +58,8 @@ const PAY_ERROR: Record<string, string> = {
   unpaid: 'Open a case only after the check is paid.',
   verdict: 'We do not open a file for this notice.',
   blocked_low_chance: 'A low chance stays closed until you confirm you still want the file.',
+  LIGHT_NOT_ALLOWED: LIGHT_BLOCKED_NOTE,
+  NO_CASE: 'We do not open a file for this notice.',
   tier: 'This check already has a file on the other price.',
   input: 'Check the form. Something required is missing or not in the right shape.',
   json: 'The server could not read that request.',
@@ -110,6 +112,8 @@ type Result = {
     status?: 'ok' | 'blocked_low_chance'
     canOpenCase?: boolean
     lowChance?: { required: boolean; warnings: Array<{ place: LowChancePlace; text: string }> }
+    lightAllowed?: boolean
+    lightBlockedNote?: string | null
   } | null
 }
 
@@ -414,6 +418,9 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
   picks.append(light, full)
 
   const extra = document.createElement('div')
+  const blocked = document.createElement('p')
+  blocked.className = 'warn-box'
+  blocked.hidden = true
   const warning = document.createElement('p')
   warning.className = 'warn-box'
   warning.hidden = true
@@ -439,21 +446,33 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
   let chosen: 'light' | 'full' = rec.tier
   let halted = false
   const refresh = () => {
+    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
+    if (!choice.ok) chosen = rec.tier
+    const applied = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
     offer.hidden = halted
     stopped.hidden = !halted
+    light.disabled = rec.lightAllowed === false
     light.classList.toggle('on', chosen === 'light')
     full.classList.toggle('on', chosen === 'full')
-    const down = rec.tier === 'full' && chosen === 'light'
-    const up = rec.tier === 'light' && chosen === 'full'
-    warning.hidden = !down && !up
-    confirm.hidden = !down
-    if (down) warning.textContent = downgradeWarning(rec.reasonId)
-    if (up) warning.textContent = LIGHT_PICK_NOTE
+    blocked.hidden = rec.lightAllowed !== false
+    blocked.textContent = rec.lightBlockedNote ?? ''
+    warning.hidden = !applied.needsConfirmation && applied.override !== 'light_to_full'
+    confirm.hidden = !applied.needsConfirmation
+    if (applied.needsConfirmation) warning.textContent = downgradeWarning(rec.reasonId)
+    if (applied.override === 'light_to_full') warning.textContent = LIGHT_PICK_NOTE
     open.textContent = low ? 'Yes, continue' : chosen === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
-    open.disabled = down && !checkbox.checked
+    open.disabled = applied.needsConfirmation && !checkbox.checked
   }
-  light.addEventListener('click', () => { chosen = 'light'; refresh() })
-  full.addEventListener('click', () => { chosen = 'full'; refresh() })
+  light.addEventListener('click', () => {
+    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'light')
+    if (choice.ok) chosen = 'light'
+    refresh()
+  })
+  full.addEventListener('click', () => {
+    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'full')
+    if (choice.ok) chosen = 'full'
+    refresh()
+  })
   checkbox.addEventListener('change', refresh)
   open.addEventListener('click', () => {
     if (low) {
@@ -465,7 +484,7 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
     void openCase(chosen, open, false)
   })
   stop.addEventListener('click', () => { halted = true; refresh() })
-  extra.append(warning, confirm, open, stop)
+  extra.append(blocked, warning, confirm, open, stop)
   offer.append(picks, extra)
   box.append(offer, stopped)
   refresh()

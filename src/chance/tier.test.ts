@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { DEFAULT_CONFIG, NO_FABRICATION, recommendTier, upgradeQuote, type TierInput } from './tier.ts'
+import { DEFAULT_CONFIG, LIGHT_BLOCKED_NOTE, NO_FABRICATION, chooseTier, recommendTier, upgradeQuote, type TierInput } from './tier.ts'
 
 const base: TierInput = {
   exchange: 'binance',
@@ -124,5 +124,69 @@ describe('tier recommendation', () => {
     const quote = upgradeQuote('full')
     assert.equal(quote.allowed, false)
     assert.equal(quote.payUsd, 0)
+  })
+
+  it('T21 blocks Light when the Light budget rule fires', () => {
+    const result = recommendTier(
+      { ...base, addressesCount: 200 },
+      { ...DEFAULT_CONFIG, maxLightAddresses: 1000 },
+    )
+    const choice = chooseTier(result, 'light')
+    assert.equal(result.tier, 'full')
+    assert.equal(result.reason, 'LIGHT_OVER_BUDGET')
+    assert.equal(result.lightAllowed, false)
+    assert.equal(result.lightBlockedNote, LIGHT_BLOCKED_NOTE)
+    assert.equal(choice.ok, false)
+    assert.equal(choice.error, 'LIGHT_NOT_ALLOWED')
+    assert.equal(choice.tier, 'full')
+    assert.equal(choice.note, LIGHT_BLOCKED_NOTE)
+    assert.equal(chooseTier(result, 'full').ok, true)
+  })
+
+  it('T22 still blocks Light when a cheaper rule matches first', () => {
+    const result = recommendTier({ ...base, addressesCount: 200 })
+    assert.equal(result.reason, 'MANY_ADDRESSES')
+    assert.ok(result.matched.includes('LIGHT_OVER_BUDGET'))
+    assert.equal(result.lightAllowed, false)
+    assert.equal(chooseTier(result, 'light').error, 'LIGHT_NOT_ALLOWED')
+  })
+
+  it('T23 lets a normal Full recommendation move to Light after confirmation', () => {
+    const ids = ['T03', 'T04', 'T05', 'T07', 'T08', 'T09', 'T10', 'T11', 'T12']
+    const samples: Array<[string, Partial<TierInput>]> = [
+      ['T03', { priorExchangeRejection: true, fundsSources: ['p2p'] }],
+      ['T04', { ownershipProofRequested: true }],
+      ['T05', { exchange: 'okx', evidence: ['txid_only'] }],
+      ['T07', { fundsSources: ['other_exchange', 'p2p'] }],
+      ['T08', { fundsSources: [] }],
+      ['T09', { disputedDepositsCount: 3 }],
+      ['T10', { requestedDocs: ['bank_statement', 'proof_of_address', 'exchange_statement'] }],
+      ['T11', { addressesCount: 31 }],
+      ['T12', { addressesCount: 120 }],
+    ]
+    assert.deepEqual(samples.map(([id]) => id), ids)
+    for (const [, patch] of samples) {
+      const result = recommendTier({ ...base, ...patch })
+      const choice = chooseTier(result, 'light')
+      assert.equal(result.tier, 'full')
+      assert.equal(result.lightAllowed, true)
+      assert.equal(result.lightBlockedNote, null)
+      assert.equal(choice.ok, true)
+      assert.equal(choice.tier, 'light')
+      assert.equal(choice.needsConfirmation, true)
+      assert.equal(choice.override, 'full_to_light')
+    }
+  })
+
+  it('T24 allows a free move from Light to Full and refuses a case we cannot take', () => {
+    const result = recommendTier(base)
+    const up = chooseTier(result, 'full')
+    const no = chooseTier(recommendTier({ ...base, verdict: 'cannot_help' }), 'light')
+    assert.equal(result.lightAllowed, true)
+    assert.equal(up.ok, true)
+    assert.equal(up.override, 'light_to_full')
+    assert.equal(up.needsConfirmation, false)
+    assert.equal(no.ok, false)
+    assert.equal(no.error, 'NO_CASE')
   })
 })

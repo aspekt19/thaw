@@ -83,6 +83,8 @@ export interface TierResult {
   matched: RuleId[];            // all rules that matched, for UI/debug
   flags: Flag[];
   lowChanceAck: { required: boolean; confirmed: boolean; warnings: LowChanceWarning[] };
+  lightAllowed: boolean;        // false only when R8 LIGHT_OVER_BUDGET fired (margin >= 20%)
+  lightBlockedNote: string | null; // user note shown when lightAllowed is false
   estCostUsd: { light: number; full: number };
   costCapUsd: { light: number; full: number };
 }
@@ -104,7 +106,8 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
   const eligible = i.verdict === "high" || i.verdict === "medium" || (isLow && c.allowLowVerdict);
   if (!eligible) return {
     status: "refused", canOpenCase: false, tier: null, reason: "NOT_ELIGIBLE", matched: [], flags,
-    lowChanceAck: { required: false, confirmed: false, warnings: [] }, estCostUsd: est, costCapUsd: cap,
+    lowChanceAck: { required: false, confirmed: false, warnings: [] },
+    lightAllowed: false, lightBlockedNote: null, estCostUsd: est, costCapUsd: cap,
   };
 
   const rules: [RuleId, boolean][] = [
@@ -122,13 +125,55 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
   const tier: Tier = matched.length ? "full" : "light";
   if (tier === "full" && est.full > cap.full) flags.push("FULL_BUDGET_GUARD");
   const blocked = isLow && !confirmed;
+  const lightAllowed = !matched.includes("LIGHT_OVER_BUDGET");
   return {
     status: blocked ? "blocked_low_chance" : "ok", canOpenCase: !blocked,
     tier, reason: matched[0] ?? "LIGHT_DEFAULT", matched: matched.length ? matched : ["LIGHT_DEFAULT"], flags,
     lowChanceAck: isLow
       ? { required: true, confirmed, warnings: LOW_CHANCE_WARNINGS }
       : { required: false, confirmed: false, warnings: [] },
+    lightAllowed, lightBlockedNote: lightAllowed ? null : LIGHT_BLOCKED_NOTE,
     estCostUsd: est, costCapUsd: cap,
+  };
+}
+
+export const LIGHT_BLOCKED_NOTE =
+  "For this case the Light package cannot cover the checks needed, so only the Full case is available.";
+
+// User changes the recommended tier (section 4). Full -> Light needs the warning checkbox
+// and is rejected when R8 fired (Thaw's derivation from Yura's margin rule >= 20%).
+export type Override = "none" | "full_to_light" | "light_to_full";
+export interface TierChoice {
+  ok: boolean;
+  tier: Tier | null;            // tier that will be sold; null = choice rejected / no case
+  override: Override;
+  needsConfirmation: boolean;   // full -> light: warning + checkbox
+  error: "NO_CASE" | "LIGHT_NOT_ALLOWED" | null;
+  note: string | null;
+}
+
+export function chooseTier(r: TierResult, chosen: Tier): TierChoice {
+  if (r.tier === null) return { ok: false, tier: null, override: "none", needsConfirmation: false, error: "NO_CASE", note: null };
+  if (chosen === r.tier) return { ok: true, tier: chosen, override: "none", needsConfirmation: false, error: null, note: null };
+  if (chosen === "full") return { ok: true, tier: "full", override: "light_to_full", needsConfirmation: false, error: null, note: null };
+  if (!r.lightAllowed) return { ok: false, tier: "full", override: "full_to_light", needsConfirmation: false, error: "LIGHT_NOT_ALLOWED", note: r.lightBlockedNote };
+  return { ok: true, tier: "light", override: "full_to_light", needsConfirmation: true, error: null, note: null };
+}
+
+/** Fields chooseTier reads, taken from a stored recommendation. Other fields are unused by that function. */
+export function choiceResult(tier: Tier | null, lightAllowed: boolean, lightBlockedNote: string | null): TierResult {
+  return {
+    status: tier ? "ok" : "refused",
+    canOpenCase: tier !== null,
+    tier,
+    reason: tier ? "LIGHT_DEFAULT" : "NOT_ELIGIBLE",
+    matched: [],
+    flags: [],
+    lowChanceAck: { required: false, confirmed: false, warnings: [] },
+    lightAllowed,
+    lightBlockedNote,
+    estCostUsd: { light: 0, full: 0 },
+    costCapUsd: { light: 0, full: 0 },
   };
 }
 

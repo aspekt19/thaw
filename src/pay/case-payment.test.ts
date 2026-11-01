@@ -210,6 +210,22 @@ describe('case remainder payment', () => {
 
     const unpaid = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'missing', tier: 'light' }) }), env(db))
     assert.equal(unpaid?.status, 402)
+
+    await seedPaid(db, 'order-r8', 'high')
+    await db.prepare('UPDATE check_orders SET result_json = ? WHERE id = ?').bind(JSON.stringify({
+      ok: true,
+      verdict: 'high',
+      recommendation: {
+        tier: 'full',
+        lightAllowed: false,
+        lightBlockedNote: 'For this case the Light package cannot cover the checks needed, so only the Full case is available.',
+      },
+    }), 'order-r8').run()
+    const blockedLight = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-r8', tier: 'light' }) }), env(db))
+    assert.equal(blockedLight?.status, 403)
+    assert.equal(((await blockedLight!.json()) as { code: string }).code, 'LIGHT_NOT_ALLOWED')
+    const fullOk = await handleApi(new Request('http://thaw.test/api/cases', { method: 'POST', body: JSON.stringify({ orderId: 'order-r8', tier: 'full' }) }), env(db))
+    assert.equal(fullOk?.status, 201)
   })
 
   it('marks a fully credited case paid without a second invoice', async () => {

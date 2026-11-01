@@ -8,7 +8,7 @@ import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
 import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
-import { LOW_CHANCE_WARNINGS } from './chance/tier.ts'
+import { LOW_CHANCE_WARNINGS, choiceResult, chooseTier } from './chance/tier.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
 
 export interface Env {
@@ -293,13 +293,27 @@ async function openCase(request: Request, env: Env): Promise<Response> {
   if (!order || order.status !== 'paid' || !order.result_json) {
     return json({ ok: false, code: 'unpaid', error: 'A case opens only after the check is paid.' }, 402)
   }
-  const verdict = (JSON.parse(order.result_json) as { verdict?: string }).verdict
+  const stored = JSON.parse(order.result_json) as {
+    verdict?: string
+    recommendation?: { tier?: string; lightAllowed?: boolean; lightBlockedNote?: string | null }
+  }
+  const verdict = stored.verdict
   const confirmedLow = row.userConfirmedLowChance === true
   if (verdict === 'low' && !confirmedLow) {
     return json({ ok: false, code: 'blocked_low_chance', error: 'A low chance stays closed until you confirm you still want the file.' }, 403)
   }
   if (verdict !== 'high' && verdict !== 'medium' && verdict !== 'low') {
     return json({ ok: false, code: 'verdict', error: 'We do not open a file for this notice.' }, 403)
+  }
+  const recommended = stored.recommendation
+  if (recommended && (recommended.tier === 'light' || recommended.tier === 'full')) {
+    const choice = chooseTier(
+      choiceResult(recommended.tier, recommended.lightAllowed !== false, recommended.lightBlockedNote ?? null),
+      row.tier,
+    )
+    if (!choice.ok) {
+      return json({ ok: false, code: choice.error, error: choice.note ?? 'That file is not available for this check.' }, 403)
+    }
   }
   const existing = await getCaseForOrder(env.DB, order.id)
   if (existing) {
