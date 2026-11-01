@@ -33,6 +33,14 @@
 
     <div data-view="home" id="top">
       <section class="hero">
+        <div class="hero-wash" aria-hidden="true">
+          <span class="orb orb-y"></span>
+          <span class="orb orb-b"></span>
+          <svg class="flow" viewBox="0 0 800 520" preserveAspectRatio="none">
+            <path d="M-40 420 C 140 390, 200 210, 340 230 S 560 420, 860 160" />
+            <path d="M-40 300 C 180 270, 250 90, 420 140 S 620 300, 860 70" />
+          </svg>
+        </div>
         <div class="hero-grid">
           <div class="hero-copy">
             <p class="kicker">Document preparation</p>
@@ -49,33 +57,35 @@
             </ul>
           </div>
           <figure class="dossier" id="demo">
-            <div class="folder">
-              <div class="folder-tab">Case file <span>Sample</span></div>
-              <div class="folder-body">
-                <article class="sheet on">
-                  <p class="sheet-label">01 Trace</p>
-                  <p class="sheet-title">The deposit, then one hop</p>
-                  <ol class="trace">
-                    <li>The deposit you paste</li>
-                    <li>The first hop on one page of history</li>
-                    <li>A placeholder, not a real wallet</li>
-                  </ol>
-                </article>
-                <article class="sheet">
-                  <p class="sheet-label">02 Timeline</p>
-                  <p class="sheet-title">What happened, in order</p>
-                  <ul class="dates">
-                    <li><span>Deposit day</span><b>UTC calendar day</b></li>
-                    <li><span>Notice</span><b>The text you paste</b></li>
-                    <li><span>Appeal</span><b>Not written as sent</b></li>
-                  </ul>
-                </article>
-                <article class="sheet">
-                  <p class="sheet-label">03 Appeal draft</p>
-                  <p class="sheet-title">A letter you can check</p>
-                  <p class="draft">We attach the deposit, the first hop, and the records you already have. This sample is not a letter, and it is not a promise that the exchange will release the funds.</p>
-                </article>
-              </div>
+            <div class="stack">
+              <div class="stack-back back-a" aria-hidden="true"></div>
+              <div class="stack-back back-b" aria-hidden="true"></div>
+              <article class="sheet on">
+                <p class="file-chip">Case file · Sample</p>
+                <p class="sheet-label">01 Trace</p>
+                <p class="sheet-title">The deposit, then one hop</p>
+                <ol class="trace">
+                  <li>The deposit you paste</li>
+                  <li>The first hop on one page of history</li>
+                  <li>A placeholder, not a real wallet</li>
+                </ol>
+              </article>
+              <article class="sheet">
+                <p class="file-chip">Case file · Sample</p>
+                <p class="sheet-label">02 Timeline</p>
+                <p class="sheet-title">What happened, in order</p>
+                <ul class="dates">
+                  <li><span>Deposit day</span><b>UTC calendar day</b></li>
+                  <li><span>Notice</span><b>The text you paste</b></li>
+                  <li><span>Appeal</span><b>Not written as sent</b></li>
+                </ul>
+              </article>
+              <article class="sheet">
+                <p class="file-chip">Case file · Sample</p>
+                <p class="sheet-label">03 Appeal draft</p>
+                <p class="sheet-title">A letter you can check</p>
+                <p class="draft">We attach the deposit, the first hop, and the records you already have. This sample is not a letter, and it is not a promise that the exchange will release the funds.</p>
+              </article>
             </div>
             <div class="sheet-marks" aria-hidden="true">
               <span class="sheet-mark on">Trace</span>

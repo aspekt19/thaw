@@ -947,9 +947,9 @@ function startDemo(): void {
   const advance = () => {
     index = (index + 1) % sheets.length
     show(index)
-    timer = window.setTimeout(advance, 2800)
+    timer = window.setTimeout(advance, 3400)
   }
   show(0)
-  timer = window.setTimeout(advance, 2800)
+  timer = window.setTimeout(advance, 3400)
   window.addEventListener('pagehide', () => window.clearTimeout(timer))
 }
