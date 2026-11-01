@@ -9,6 +9,13 @@
   --font-display: "League Spartan", "Avenir Next", "Trebuchet MS", sans-serif;
   --font-text: "Figtree", "Avenir Next", "Trebuchet MS", sans-serif;
   --pad: 40px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --t-press: 140ms;
+  --t-hover: 180ms;
+  --t-ui: 240ms;
   color: var(--ink);
   background: var(--paper);
   font-family: var(--font-text);
@@ -19,6 +26,10 @@
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; scrollbar-gutter: stable both-edges; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 
 body {
   margin: 0;
@@ -70,10 +81,11 @@ nav a { text-decoration: none; font-weight: 600; }
   background: var(--blue);
   color: #fff;
   min-height: 48px;
-  padding: 12px 18px;
+  padding: 12px 20px;
   display: inline-flex;
   align-items: center;
   text-decoration: none;
+  border-radius: 999px;
 }
 
 .nav-go:hover { background: var(--blue-hover); }
@@ -142,7 +154,8 @@ p { margin: 0 0 16px; }
   min-height: 48px;
   background: var(--tint);
   border: 0;
-  padding: 10px;
+  border-radius: 999px;
+  padding: 10px 14px;
   cursor: pointer;
 }
 
@@ -173,20 +186,33 @@ p { margin: 0 0 16px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-height: 48px;
-  padding: 12px 18px;
+  padding: 12px 22px;
   background: var(--blue);
   color: #fff;
   text-decoration: none;
   border: 0;
+  border-radius: 999px;
   cursor: pointer;
   font-weight: 600;
   width: fit-content;
 }
 
+.cta::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: currentColor;
+  clip-path: polygon(1px 4px, 8px 4px, 8px 1px, 14px 7px, 8px 13px, 8px 10px, 1px 10px);
+}
+
 .hero .action { background: #fff; color: var(--navy); }
 
 .action:hover { background: var(--blue-hover); color: #fff; }
+
+.action:disabled { opacity: 0.55; cursor: default; }
 
 .hero .action:hover { background: var(--tint); color: var(--navy); }
 
@@ -194,9 +220,68 @@ p { margin: 0 0 16px; }
 
 .action.ghost:hover { background: var(--blue); }
 
-.how, .prices, .questions, .book, .band, .sheet-page {
+.how, .prices, .questions, .book, .band, .path, .sheet-page {
   padding: 120px var(--pad);
 }
+
+.path h2 { max-width: 16ch; }
+
+.flow { position: relative; margin-top: 12px; container-type: inline-size; }
+
+.flow-rail {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16px;
+  pointer-events: none;
+}
+
+.flow-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--navy);
+}
+
+.flow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 22px;
+  position: relative;
+}
+
+.flow-steps::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  right: 16px;
+  height: 3px;
+  background: var(--tint);
+}
+
+.flow-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--blue);
+  display: block;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.flow-steps strong { display: block; margin-bottom: 8px; font-size: 18px; }
+
+.flow-steps li > span:last-child { display: block; font-size: 16px; }
 
 .how-grid, .book {
   display: grid;
@@ -371,27 +456,69 @@ textarea { min-height: 140px; resize: vertical; }
 .copy-row button, .stack button.action { width: auto; }
 
 .status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--navy);
   color: #fff;
   padding: 16px 18px;
   margin-top: 16px;
+  border-radius: 999px;
 }
+
+.live-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--soft);
+  flex: none;
+}
+
+.status.is-done .live-dot { background: #fff; }
+
+.status.is-bad { background: var(--tint); color: var(--navy); }
+
+.status.is-bad .live-dot { background: var(--navy); }
 
 .reasons { padding-left: 1.1em; }
 
 .reasons li { margin-bottom: 8px; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .line { animation: maskline 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .line { animation: maskline 0.7s var(--ease-expo) both; }
   .line.late { animation-delay: 0.11s; }
-  [data-rise].go { animation: enter 0.72s cubic-bezier(0.16, 1, 0.3, 1) both; }
-  .drift { animation: drift 16s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate; }
-  .action, .tier, nav a, .ask summary {
-    transition: background-color 0.16s cubic-bezier(0.16, 1, 0.3, 1), color 0.16s cubic-bezier(0.16, 1, 0.3, 1), transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  [data-rise].go {
+    animation: enter 0.8s var(--ease-expo) both;
+    animation-delay: calc(var(--i, 0) * 75ms);
   }
+  [data-rise="photo"].go { animation-name: photo-in; animation-duration: 1.05s; }
+  [data-rise="row"].go { animation-duration: 0.55s; animation-timing-function: var(--ease-out); }
+  .arrive {
+    animation: enter 0.7s var(--ease-expo) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  .verdict-level { animation: verdict-in 0.85s var(--ease-expo) both; }
+  .drift { animation: drift 16s var(--ease-soft) infinite alternate; }
+  .flow-dot { animation: flow-x 8s linear infinite; }
+  .flow-mark { animation: flow-mark 8s linear infinite; }
+  .flow-steps li:nth-child(2) .flow-mark { animation-delay: 1.6s; }
+  .flow-steps li:nth-child(3) .flow-mark { animation-delay: 3.2s; }
+  .flow-steps li:nth-child(4) .flow-mark { animation-delay: 4.8s; }
+  .flow-steps li:nth-child(5) .flow-mark { animation-delay: 6.4s; }
+  .shot:not(.wide) img { transition: transform 0.6s var(--ease-soft); }
+  .shot:not(.wide):hover img { transform: scale(1.03); }
+  .action, .tier, .nav-go, nav a, .ask summary {
+    transition: background-color var(--t-hover) ease, color var(--t-hover) ease, transform var(--t-press) var(--ease-out);
+  }
+  .cta::after { transition: transform var(--t-ui) var(--ease-out); }
   .action:hover, .tier:hover, .nav-go:hover { transform: translateY(-2px); }
-  .action:active, .tier:active { transform: translateY(1px); }
-  .plus::after { transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1); }
+  .cta:hover::after { transform: translateX(4px); }
+  .action:active, .tier:active, .nav-go:active { transform: scale(0.97); }
+  .action:disabled, .action:disabled:hover, .action:disabled:active { transform: none; }
+  .plus::after { transition: transform var(--t-press) var(--ease-out); }
+  .status.is-wait .live-dot { animation: status-dot 1.4s var(--ease-out) infinite; }
+  ::view-transition-old(root) { animation: 180ms var(--ease-exit) both vt-out; }
+  ::view-transition-new(root) { animation: 320ms var(--ease-out) both vt-in; }
 }
 
 @keyframes maskline {
@@ -409,16 +536,55 @@ textarea { min-height: 140px; resize: vertical; }
   to { transform: scale(1.05); }
 }
 
+@keyframes photo-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes verdict-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flow-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(100cqi - 16px)); }
+}
+
+@keyframes flow-mark {
+  0%, 100% { transform: scale(1); }
+  8%, 20% { transform: scale(1.55); }
+}
+
+@keyframes status-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+@keyframes vt-out {
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+@keyframes vt-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
 @media (max-width: 900px) {
   :root { --pad: 20px; }
-  .hero, .how-grid, .book, .questions, .prices .plan-row, .invoice, .pair, .foot-line {
+  .hero, .how-grid, .book, .questions, .prices .plan-row, .invoice, .pair, .foot-line, .flow-steps {
     grid-template-columns: 1fr;
   }
+  .flow-steps { padding: 0 0 0 36px; gap: 22px; }
+  .flow-steps::before { top: 8px; bottom: 8px; left: 5px; right: auto; width: 3px; height: auto; }
+  .flow-mark { position: absolute; left: -32px; top: 4px; margin: 0; }
+  .flow-steps li { position: relative; }
+  .flow-rail { display: none; }
   .hero { min-height: 0; }
   .hero-stage { order: -1; padding: 24px var(--pad); }
   .hero-copy { padding: 28px var(--pad) 36px; }
   .fragment { min-height: 280px; }
-  .how, .prices, .questions, .book, .sheet-page { padding: 72px var(--pad); }
+  .how, .prices, .questions, .book, .path, .sheet-page { padding: 72px var(--pad); }
   .questions h2 { position: static; }
   .shot img, .drift-frame img, .band .shot img, .band .drift { height: 320px; }
   .foot-line p:last-child, .foot-links { text-align: left; justify-content: flex-start; }
@@ -429,3 +595,4 @@ textarea { min-height: 140px; resize: vertical; }
 @media (max-width: 700px) {
   nav a:not(.nav-go) { display: none; }
 }
+

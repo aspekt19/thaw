@@ -120,6 +120,7 @@ const TX_KEY = 'thaw.tx'
 const CASE_TX_KEY = 'thaw.caseTx'
 
 let pollTimer = 0
+let routed = false
 
 const clientId = document.querySelector<HTMLInputElement>('#clientId')
 if (clientId) clientId.value = browserId()
@@ -152,27 +153,41 @@ function stopPoll(): void {
 function route(): void {
   stopPoll()
   const id = location.hash.replace(/^#/, '') || 'top'
-  if (id === 'top' || id === 'prices' || id === 'questions' || id === 'how') {
-    show('home')
+  const first = !routed
+  routed = true
+  if (id === 'top' || id === 'prices' || id === 'questions' || id === 'how' || id === 'path') {
+    show('home', !first && visibleView() !== 'home')
     if (id !== 'top') document.getElementById(id)?.scrollIntoView()
     return
   }
   const views = ['check', 'invoice', 'result', 'case', 'terms', 'privacy']
   if (views.includes(id)) {
-    show(id)
+    show(id, !first)
     if (id === 'invoice') void paintInvoice()
     if (id === 'result') void paintResult()
     if (id === 'case') void paintCase()
     return
   }
-  show('home')
+  show('home', !first && visibleView() !== 'home')
 }
 
-function show(name: string): void {
-  document.querySelectorAll<HTMLElement>('[data-view]').forEach((view) => {
-    view.toggleAttribute('hidden', view.dataset.view !== name)
-  })
-  if (name !== 'home') window.scrollTo(0, 0)
+function visibleView(): string | undefined {
+  return document.querySelector<HTMLElement>('[data-view]:not([hidden])')?.dataset.view
+}
+
+function prefersMotion(): boolean {
+  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function show(name: string, animate: boolean): void {
+  const apply = () => {
+    document.querySelectorAll<HTMLElement>('[data-view]').forEach((view) => {
+      view.toggleAttribute('hidden', view.dataset.view !== name)
+    })
+    if (name !== 'home') window.scrollTo(0, 0)
+  }
+  if (animate && prefersMotion() && typeof document.startViewTransition === 'function') document.startViewTransition(apply)
+  else apply()
 }
 
 function setTier(tier: 'light' | 'full'): void {
@@ -187,6 +202,8 @@ function setTier(tier: 'light' | 'full'): void {
   if (figure) figure.textContent = `$${remainder}.00`
   if (line) line.textContent = `$${price} file, minus the $1 check. A live invoice adds under $0.10 so two open invoices never match.`
   if (sample) sample.textContent = `${remainder}.000000 USDC`
+  nudge(figure)
+  nudge(sample)
 }
 
 async function sendCheck(): Promise<void> {
@@ -279,11 +296,11 @@ async function refreshOrder(id: string): Promise<void> {
   const status = document.querySelector('#pay-status')
   if (!status || !order) return
   if (order.paid) {
-    status.textContent = 'Paid. Opening the result.'
+    setStatus('Paid. Opening the result.', 'done')
     location.hash = 'result'
     return
   }
-  if (!tx) status.textContent = 'Waiting for the transfer.'
+  if (!tx) setStatus('Waiting for the transfer.', 'wait')
 }
 
 async function paintResult(): Promise<void> {
@@ -303,7 +320,9 @@ async function paintResult(): Promise<void> {
     return
   }
   const level = LEVEL[result.verdict] ?? result.verdict
-  root.append(heading(level))
+  const title = heading(level)
+  title.classList.add('verdict-level')
+  root.append(title)
   root.append(paragraph(english(result.explanation) || 'The level comes from the rules on the notice and the public transfer.'))
   root.append(subhead('Reasons'))
   root.append(list(result.reasons ?? []))
@@ -321,6 +340,7 @@ async function paintResult(): Promise<void> {
     row.append(caseButton('light', 'Open the light file, $49'), caseButton('full', 'Open the full file, $79'))
     root.append(row)
   }
+  stamp(root)
 }
 
 function nextStep(verdict: string): string {
@@ -334,7 +354,7 @@ function nextStep(verdict: string): string {
 function caseButton(tier: 'light' | 'full', label: string): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = 'action'
+  button.className = 'action cta'
   button.textContent = label
   button.addEventListener('click', () => void openCase(tier, button))
   return button
@@ -438,16 +458,18 @@ function invoiceBlock(opts: {
   const left = document.createElement('div')
   left.append(heading(opts.title), paragraph(opts.lead))
   const amount = document.createElement('p')
-  amount.className = 'amount'
+  amount.className = 'amount arrive'
   amount.textContent = opts.amount
   left.append(amount)
   const steps = document.createElement('ol')
   steps.className = 'steps'
-  for (const step of opts.steps) {
+  opts.steps.forEach((step, index) => {
     const li = document.createElement('li')
+    li.className = 'arrive'
+    li.style.setProperty('--i', String(index + 1))
     li.textContent = step
     steps.append(li)
-  }
+  })
   left.append(steps)
   const right = document.createElement('div')
   const facts = document.createElement('dl')
@@ -479,13 +501,19 @@ function invoiceBlock(opts: {
   input.spellcheck = false
   input.value = sessionStorage.getItem(opts.hashKey) ?? ''
   const button = document.createElement('button')
-  button.className = 'action'
+  button.className = 'action cta'
   button.type = 'submit'
   button.textContent = 'I sent it'
   const status = document.createElement('p')
   status.id = 'pay-status'
-  status.className = 'status'
-  status.textContent = input.value ? 'Checking the transaction.' : 'Waiting for the transfer.'
+  status.className = 'status is-wait'
+  const dot = document.createElement('span')
+  dot.className = 'live-dot'
+  dot.setAttribute('aria-hidden', 'true')
+  const statusText = document.createElement('span')
+  statusText.className = 'status-text'
+  statusText.textContent = input.value ? 'Checking the transaction.' : 'Waiting for the transfer.'
+  status.append(dot, statusText)
   form.append(label, input, button)
   form.addEventListener('submit', (event) => {
     event.preventDefault()
@@ -501,7 +529,6 @@ function invoiceBlock(opts: {
 
 async function confirm(url: string, tx: string, key: string, quiet = false): Promise<void> {
   sessionStorage.setItem(key, tx)
-  const status = document.querySelector('#pay-status')
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -509,17 +536,15 @@ async function confirm(url: string, tx: string, key: string, quiet = false): Pro
   })
   const body = (await response.json()) as { code?: string; error?: string; paid?: boolean; ok?: boolean; verdict?: string }
   if (response.ok && (body.paid || body.verdict)) {
-    if (status) status.textContent = 'Paid.'
+    setStatus('Paid.', 'done')
     if (url.includes('/cases/')) {
       if (location.hash === '#case') void paintCase()
       else location.hash = 'case'
     } else if (location.hash !== '#result') location.hash = 'result'
     return
   }
-  if (!quiet && status) status.textContent = say(body.code, body.error)
-  if (quiet && status && (body.code === 'not_mined' || body.code === 'confirmations' || body.code === 'rpc')) {
-    status.textContent = say(body.code, body.error)
-  }
+  const waiting = body.code === 'not_mined' || body.code === 'confirmations' || body.code === 'rpc'
+  if (!quiet || waiting) setStatus(say(body.code, body.error), waiting ? 'wait' : 'bad')
 }
 
 function copyButton(label: string, value: string): HTMLButtonElement {
@@ -568,7 +593,7 @@ function list(items: string[]): HTMLElement {
 
 function link(text: string, href: string): HTMLAnchorElement {
   const a = document.createElement('a')
-  a.className = 'action'
+  a.className = 'action cta'
   a.href = href
   a.textContent = text
   return a
@@ -606,10 +631,40 @@ function browserId(): string {
   return next
 }
 
+function stamp(root: Element): void {
+  Array.from(root.children).forEach((el, index) => {
+    if (!(el instanceof HTMLElement) || el.classList.contains('verdict-level')) return
+    el.classList.add('arrive')
+    el.style.setProperty('--i', String(index))
+  })
+}
+
+function setStatus(text: string, mode: 'wait' | 'bad' | 'done'): void {
+  const status = document.querySelector('#pay-status')
+  if (!status) return
+  const label = status.querySelector('.status-text')
+  if (label) label.textContent = text
+  status.classList.toggle('is-wait', mode === 'wait')
+  status.classList.toggle('is-bad', mode === 'bad')
+  status.classList.toggle('is-done', mode === 'done')
+}
+
+function nudge(el: Element | null): void {
+  if (!(el instanceof HTMLElement) || !prefersMotion()) return
+  el.animate(
+    [
+      { opacity: 0.35, transform: 'translateY(8px)' },
+      { opacity: 1, transform: 'none' },
+    ],
+    { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+  )
+}
+
 function rise(): void {
   const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-rise]'))
-  const mark = (el: HTMLElement, index: number) => {
-    el.style.animationDelay = `${Math.min(index, 8) * 70}ms`
+  const mark = (el: HTMLElement) => {
+    const siblings = el.parentElement ? Array.from(el.parentElement.querySelectorAll<HTMLElement>(':scope > [data-rise]')) : [el]
+    el.style.setProperty('--i', String(Math.max(0, siblings.indexOf(el))))
     el.classList.add('go')
   }
   if (!('IntersectionObserver' in window)) {
@@ -619,7 +674,7 @@ function rise(): void {
   const seen = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue
-      mark(entry.target as HTMLElement, nodes.indexOf(entry.target as HTMLElement))
+      mark(entry.target as HTMLElement)
       seen.unobserve(entry.target)
     }
   }, { threshold: 0.2 })
