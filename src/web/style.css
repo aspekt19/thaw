@@ -391,7 +391,7 @@ details[open] .plus::after { transform: none; }
 .panel, .invoice { background: transparent; padding: 8px 0 0; }
 .field { margin-bottom: 16px; border: 0; padding: 0; }
 .field[hidden], .warn-box[hidden], .check[hidden], button[hidden], .ghost[hidden], .quiet[hidden] { display: none; }
-.field legend, .field label, .check label { font-family: var(--sans); font-weight: 700; }
+.field legend, .field label, .check label, #date-label { font-family: var(--sans); font-weight: 700; }
 .field legend { margin-bottom: 8px; }
 .field label { display: block; margin-bottom: 6px; }
 .pills { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -427,6 +427,10 @@ input, select, textarea {
 }
 textarea { min-height: 140px; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+#date-label { display: block; margin-bottom: 6px; }
+.date-parts { display: grid; grid-template-columns: 0.8fr 1.15fr 1fr; gap: 10px; }
+.date-parts label { display: block; margin-bottom: 6px; font-family: var(--sans); font-weight: 700; font-size: 14px; }
+.date-parts select { padding-left: 10px; padding-right: 8px; }
 .warn { background: var(--blue-soft); padding: 12px 14px; }
 .invoice { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding: 8px 0 0; }
 .amount, .mono, .meta dd { font-family: var(--mono); }

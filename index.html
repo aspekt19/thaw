@@ -203,7 +203,7 @@
       <section class="sheet-page">
         <h1>The chance check</h1>
         <p class="support">From $1 in USDC on Base, credited toward a $49 or $79 file on this same check. Paste the notice as you received it. Leave out keys and seed phrases.</p>
-        <form id="check-form" class="panel" action="/api/check-orders" method="post">
+        <form id="check-form" class="panel" action="/api/check-orders" method="post" novalidate>
           <div class="field">
             <label for="exchange">Exchange</label>
             <select id="exchange" name="exchange" required>
@@ -240,7 +240,7 @@
               <option value="arbitrum">Arbitrum</option>
               <option value="base">Base</option>
             </select>
-            <p class="hint">A Base address or transaction is opened on basescan.org.</p>
+            <p id="chain-hint" class="hint">A TRON address or transaction is opened on tronscan.org.</p>
           </div>
           <div class="field">
             <label for="deposit">Deposit transaction ID (TxID) or sender address</label>
@@ -248,8 +248,22 @@
             <p id="deposit-hint" class="hint">In the exchange deposit history, open the deposit and copy the TxID. A TxID is better than an address. TRON: 64 hex characters, or a T… address. Ethereum, Arbitrum, and Base: 0x plus 64 hex characters for a transaction, or 0x plus 40 hex characters for an address.</p>
           </div>
           <div class="field">
-            <label for="date">Deposit date</label>
-            <input id="date" name="date" type="date" required>
+            <span id="date-label">Deposit date</span>
+            <div class="date-parts" role="group" aria-labelledby="date-label">
+              <div>
+                <label for="date-day">Day</label>
+                <select id="date-day"></select>
+              </div>
+              <div>
+                <label for="date-month">Month</label>
+                <select id="date-month"></select>
+              </div>
+              <div>
+                <label for="date-year">Year</label>
+                <select id="date-year"></select>
+              </div>
+            </div>
+            <input id="date" name="date" type="hidden" value="">
           </div>
           <fieldset class="field">
             <legend>Where the funds came from</legend>
@@ -274,7 +288,7 @@
           </fieldset>
           <div class="field">
             <label for="disputedDepositsCount">Disputed deposits</label>
-            <input id="disputedDepositsCount" name="disputedDepositsCount" type="number" min="1" max="20" value="1" required inputmode="numeric">
+            <input id="disputedDepositsCount" name="disputedDepositsCount" type="text" inputmode="numeric" value="1" required autocomplete="off" spellcheck="false">
           </div>
           <div class="field check">
             <input id="priorExchangeRejection" name="priorExchangeRejection" type="checkbox" value="yes">
@@ -290,7 +304,7 @@
           </fieldset>
           <div class="field" id="rounds-field" hidden>
             <label for="priorRoundsCount">How many rounds did you already send?</label>
-            <input id="priorRoundsCount" name="priorRoundsCount" type="number" min="0" max="20" value="1" inputmode="numeric">
+            <input id="priorRoundsCount" name="priorRoundsCount" type="text" inputmode="numeric" value="1" autocomplete="off" spellcheck="false">
           </div>
           <input id="captchaToken" name="captchaToken" type="hidden" value="">
           <input id="clientId" name="clientId" type="hidden" value="">

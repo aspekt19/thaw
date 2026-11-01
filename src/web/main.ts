@@ -180,6 +180,104 @@ const COUNTRIES: Array<[string, string]> = [
   ['BR', 'Brazil'], ['IN', 'India'], ['UA', 'Ukraine'], ['GE', 'Georgia'], ['KZ', 'Kazakhstan'],
 ]
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const CHAIN_HINT: Record<string, string> = {
+  tron: 'A TRON address or transaction is opened on tronscan.org.',
+  ethereum: 'An Ethereum address or transaction is opened on etherscan.io.',
+  arbitrum: 'An Arbitrum address or transaction is opened on arbiscan.io.',
+  base: 'A Base address or transaction is opened on basescan.org.',
+}
+
+function fillDepositDate(): void {
+  const day = document.querySelector<HTMLSelectElement>('#date-day')
+  const month = document.querySelector<HTMLSelectElement>('#date-month')
+  const year = document.querySelector<HTMLSelectElement>('#date-year')
+  if (!day || !month || !year || day.options.length > 0) return
+  const blank = (label: string) => {
+    const option = document.createElement('option')
+    option.value = ''
+    option.textContent = label
+    return option
+  }
+  day.append(blank('Select'))
+  for (let n = 1; n <= 31; n += 1) {
+    const option = document.createElement('option')
+    option.value = String(n).padStart(2, '0')
+    option.textContent = String(n)
+    day.append(option)
+  }
+  month.append(blank('Select'))
+  MONTHS.forEach((name, index) => {
+    const option = document.createElement('option')
+    option.value = String(index + 1).padStart(2, '0')
+    option.textContent = name
+    month.append(option)
+  })
+  year.append(blank('Select'))
+  const latest = new Date().getUTCFullYear()
+  for (let n = latest; n >= 2014; n -= 1) {
+    const option = document.createElement('option')
+    option.value = String(n)
+    option.textContent = String(n)
+    year.append(option)
+  }
+}
+
+function depositDateValue(): string {
+  const day = document.querySelector<HTMLSelectElement>('#date-day')?.value ?? ''
+  const month = document.querySelector<HTMLSelectElement>('#date-month')?.value ?? ''
+  const year = document.querySelector<HTMLSelectElement>('#date-year')?.value ?? ''
+  if (!day || !month || !year) return ''
+  return `${year}-${month}-${day}`
+}
+
+function depositDateProblem(): string | null {
+  const value = depositDateValue()
+  const hidden = document.querySelector<HTMLInputElement>('#date')
+  if (hidden) hidden.value = value
+  if (!value) return 'Choose the deposit day, month, and year.'
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  const real = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  if (!real) return 'That is not a real calendar day.'
+  return null
+}
+
+function checkFormProblem(form: HTMLFormElement): string | null {
+  const notice = form.querySelector<HTMLTextAreaElement>('#notice')?.value.trim() ?? ''
+  if (!notice) return 'Paste the notice text.'
+  if (notice.length > 8000) return 'The notice is too long. Keep it under 8000 characters.'
+  const amount = form.querySelector<HTMLInputElement>('#amount')?.value.trim() ?? ''
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount) || Number(amount) <= 0) return 'Enter the amount as a number greater than zero.'
+  const asset = form.querySelector<HTMLInputElement>('#asset')?.value.trim() ?? ''
+  if (!/^[A-Za-z]{2,12}$/.test(asset)) return 'Enter the asset in letters, for example USDT.'
+  const deposit = form.querySelector<HTMLInputElement>('#deposit')?.value.trim() ?? ''
+  if (!deposit) return 'Paste the deposit transaction ID or the sender address.'
+  const dateProblem = depositDateProblem()
+  if (dateProblem) return dateProblem
+  const disputed = form.querySelector<HTMLInputElement>('#disputedDepositsCount')?.value.trim() ?? ''
+  if (!/^(?:0|[1-9]\d*)$/.test(disputed) || Number(disputed) < 1 || Number(disputed) > 20) {
+    return 'Disputed deposits must be a whole number from 1 to 20.'
+  }
+  const roundsField = document.querySelector('#rounds-field')
+  if (roundsField && !roundsField.hasAttribute('hidden')) {
+    const rounds = form.querySelector<HTMLInputElement>('#priorRoundsCount')?.value.trim() ?? ''
+    if (!/^(?:0|[1-9]\d*)$/.test(rounds) || Number(rounds) > 20) return 'Rounds already sent must be a whole number from 0 to 20.'
+  }
+  if (!form.querySelector('input[name="holdType"]:checked')) return 'Choose what kind of hold this is.'
+  return null
+}
+
+function showChainHint(): void {
+  const chain = document.querySelector<HTMLSelectElement>('#chain')?.value ?? 'tron'
+  const hint = document.querySelector('#chain-hint')
+  if (hint) hint.textContent = CHAIN_HINT[chain] ?? CHAIN_HINT.tron
+}
+
+fillDepositDate()
+document.querySelector('#chain')?.addEventListener('change', showChainHint)
+showChainHint()
+
 function countrySelect(): HTMLSelectElement {
   const select = document.createElement('select')
   select.required = true
@@ -248,6 +346,12 @@ async function sendCheck(): Promise<void> {
   if (!form || !submit || !error) return
   submit.disabled = true
   error.textContent = ''
+  const problem = checkFormProblem(form)
+  if (problem) {
+    error.textContent = problem
+    submit.disabled = false
+    return
+  }
   try {
     const response = await fetch(form.action, {
       method: 'POST',
@@ -413,6 +517,7 @@ function noteBox(text: string): HTMLElement {
 
 function countryAsk(orderId: string): HTMLElement {
   const form = document.createElement('form')
+  form.noValidate = true
   const label = document.createElement('label')
   label.htmlFor = 'result-country'
   label.textContent = 'Country of residence'
@@ -428,6 +533,11 @@ function countryAsk(orderId: string): HTMLElement {
   form.append(label, select, button, error)
   form.addEventListener('submit', (event) => {
     event.preventDefault()
+    if (!select.value) {
+      error.hidden = false
+      error.textContent = 'Choose the country of residence.'
+      return
+    }
     void sendResidence(orderId, select.value, button, error)
   })
   return form
@@ -776,6 +886,7 @@ function invoiceBlock(opts: {
   if (toRow) copies.append(copyButton('Copy the address', toRow[1]))
   const form = document.createElement('form')
   form.className = 'stack'
+  form.noValidate = true
   const label = document.createElement('label')
   label.htmlFor = 'tx-hash'
   label.textContent = 'Transaction hash'
@@ -803,7 +914,10 @@ function invoiceBlock(opts: {
   form.addEventListener('submit', (event) => {
     event.preventDefault()
     const tx = input.value.trim()
-    if (!tx) return
+    if (!tx) {
+      setStatus('Paste the transaction hash.', 'bad')
+      return
+    }
     sessionStorage.setItem(opts.hashKey, tx)
     void opts.onSubmit(tx)
   })
