@@ -1,4 +1,4 @@
-# Replace database_id after `wrangler d1 create thaw`. Do not put a real account id or a secret here.
+# D1 database_id for the deployed "thaw" database (not a secret). Do not put an account id or a secret here.
 name = "thaw"
 main = "src/worker.ts"
 compatibility_date = "2026-11-01"
@@ -18,7 +18,7 @@ run_worker_first = ["/api/*", "/v1/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "thaw"
-database_id = "replace-with-d1-database-id"
+database_id = "bb9bc9ab-a143-43b7-9456-821d1169d5b6"
 
 [vars]
 THAW_CHECK_PRICE_USD = "1.00"
