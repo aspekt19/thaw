@@ -1,5 +1,9 @@
 import { CHAINS, EXCHANGES, ORIGINS, type Chain, type Exchange, type Origin } from './constants.ts'
 import { classifyDeposit } from './address.ts'
+import type { Evidence, FundsSource } from './tier.ts'
+
+const FUNDS: readonly FundsSource[] = ['other_exchange', 'own_wallet', 'p2p', 'otc', 'defi', 'unknown']
+const EVIDENCE: readonly Evidence[] = ['bank_statements', 'income_docs', 'exchange_export', 'txid_only', 'none']
 
 export type ChanceInput = {
   exchange: Exchange
@@ -12,6 +16,11 @@ export type ChanceInput = {
   origin: Origin
   hasDocuments: boolean | null
   priorRefusal: boolean
+  fundsSources?: FundsSource[]
+  evidence?: Evidence[]
+  priorExchangeRejection?: boolean
+  priorRoundsCount?: number
+  disputedDepositsCount?: number
   clientId?: string
   captchaToken?: string
 }
@@ -49,10 +58,30 @@ export function parseChanceInput(body: unknown): ParseResult {
   if (typeof row.date !== 'string' || !validDay(row.date)) {
     return { ok: false, error: 'Дата в формате ГГГГ-ММ-ДД.' }
   }
-  const origin = readEnum(row.origin, ORIGINS)
+  const listedSources = readList(row.fundsSources, FUNDS)
+  if (listedSources === 'bad') return { ok: false, error: 'Укажите происхождение средств из списка.' }
+  const hasSourceList = Array.isArray(row.fundsSources)
+  const origin = hasSourceList ? originFromSources(listedSources) : readEnum(row.origin, ORIGINS)
   if (!origin) return { ok: false, error: 'Укажите, откуда средства, из списка.' }
-  const documents = readDocuments(row.hasDocuments)
+  const fundsSources = hasSourceList ? listedSources : sourcesFromOrigin(origin)
+  const listedEvidence = readList(row.evidence, EVIDENCE)
+  if (listedEvidence === 'bad') return { ok: false, error: 'Укажите, какие документы уже есть, из списка.' }
+  const evidence = Array.isArray(row.evidence) ? listedEvidence : []
+  const documents = Array.isArray(row.evidence) ? documentsFromEvidence(evidence) : readDocuments(row.hasDocuments)
   if (documents === 'bad') return { ok: false, error: 'Поле документов: yes, no или пусто.' }
+  const rejected = row.priorExchangeRejection === true || row.priorExchangeRejection === 'yes' || row.priorRefusal === true || row.priorRefusal === 'yes'
+  let priorRoundsCount: number | undefined
+  if (row.priorRoundsCount !== undefined && row.priorRoundsCount !== '') {
+    const rounds = typeof row.priorRoundsCount === 'number' ? row.priorRoundsCount : Number(row.priorRoundsCount)
+    if (!Number.isInteger(rounds) || rounds < 0 || rounds > 20) return { ok: false, error: 'Число раундов должно быть от 0 до 20.' }
+    priorRoundsCount = rounds
+  }
+  let disputedDepositsCount = 1
+  if (row.disputedDepositsCount !== undefined && row.disputedDepositsCount !== '') {
+    const count = typeof row.disputedDepositsCount === 'number' ? row.disputedDepositsCount : Number(row.disputedDepositsCount)
+    if (!Number.isInteger(count) || count < 1 || count > 20) return { ok: false, error: 'Число спорных депозитов должно быть от 1 до 20.' }
+    disputedDepositsCount = count
+  }
   let clientId: string | undefined
   if (row.clientId !== undefined && row.clientId !== '') {
     if (typeof row.clientId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(row.clientId)) {
@@ -73,11 +102,52 @@ export function parseChanceInput(body: unknown): ParseResult {
       date: row.date,
       origin,
       hasDocuments: documents,
-      priorRefusal: row.priorRefusal === true || row.priorRefusal === 'yes',
+      priorRefusal: rejected || (priorRoundsCount ?? 0) >= 1,
+      fundsSources,
+      evidence,
+      priorExchangeRejection: rejected,
+      priorRoundsCount,
+      disputedDepositsCount,
       clientId,
       captchaToken,
     },
   }
+}
+
+function readList<T extends string>(value: unknown, allowed: readonly T[]): T[] | 'bad' {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return 'bad'
+  const out: T[] = []
+  for (const item of value) {
+    if (typeof item !== 'string' || !(allowed as readonly string[]).includes(item)) return 'bad'
+    if (!out.includes(item as T)) out.push(item as T)
+  }
+  return out
+}
+
+function originFromSources(sources: FundsSource[]): Origin {
+  if (sources.includes('p2p')) return 'p2p'
+  if (sources.includes('otc')) return 'otc'
+  if (sources.includes('defi')) return 'defi_airdrop'
+  if (sources.includes('other_exchange')) return 'exchange_purchase'
+  if (sources.includes('own_wallet')) return 'unknown'
+  return 'unknown'
+}
+
+export function sourcesFromOrigin(origin: Origin): FundsSource[] {
+  if (origin === 'exchange_purchase') return ['other_exchange']
+  if (origin === 'p2p') return ['p2p']
+  if (origin === 'otc') return ['otc']
+  if (origin === 'defi_airdrop') return ['defi']
+  if (origin === 'transfer_person') return ['own_wallet']
+  if (origin === 'unknown') return ['unknown']
+  return ['unknown']
+}
+
+function documentsFromEvidence(evidence: Evidence[]): boolean | null {
+  if (evidence.some((item) => item === 'bank_statements' || item === 'income_docs' || item === 'exchange_export')) return true
+  if (evidence.length === 0) return null
+  return false
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {

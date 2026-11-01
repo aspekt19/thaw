@@ -334,7 +334,26 @@ details[open] .plus::after { transform: none; }
   border-radius: 24px;
   padding: 8px 0 0;
 }
-.field { margin-bottom: 16px; }
+.field { margin-bottom: 16px; border: 0; padding: 0; }
+.field[hidden], .warn-box[hidden], .check[hidden] { display: none; }
+.field legend { font-weight: 600; margin-bottom: 8px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--canvas);
+  cursor: pointer;
+  font-weight: 600;
+}
+.pill input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.pill:has(input:checked) { background: var(--blue); color: #fff; }
+.pill:has(input:focus-visible) { outline: 3px solid var(--blue); outline-offset: 3px; }
+.recommend { background: var(--blue-soft); border-radius: 24px; padding: 18px 18px 8px; margin: 18px 0; }
+.recommend .sum { font-size: 42px; }
+.warn-box { background: var(--canvas); border-radius: 16px; padding: 14px; margin: 12px 0; }
 .field label, .check label { display: block; font-weight: 600; margin-bottom: 6px; }
 .check { display: flex; align-items: center; gap: 10px; }
 .check input { width: 18px; height: 18px; }

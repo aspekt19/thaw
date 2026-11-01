@@ -255,38 +255,46 @@
             <p class="hint">A Base address or transaction is opened on basescan.org.</p>
           </div>
           <div class="field">
-            <label for="deposit">Sender address or deposit transaction id</label>
-            <input id="deposit" name="deposit" required autocomplete="off" spellcheck="false">
+            <label for="deposit">Deposit transaction ID (TxID) or sender address</label>
+            <input id="deposit" name="deposit" required autocomplete="off" spellcheck="false" aria-describedby="deposit-hint">
+            <p id="deposit-hint" class="hint">In the exchange deposit history, open the deposit and copy the TxID. A TxID is better than an address. TRON: 64 hex characters, or a T… address. Ethereum, Arbitrum, and Base: 0x plus 64 hex characters for a transaction, or 0x plus 40 hex characters for an address.</p>
           </div>
           <div class="field">
             <label for="date">Deposit date</label>
             <input id="date" name="date" type="date" required>
           </div>
+          <fieldset class="field">
+            <legend>Where the funds came from</legend>
+            <div class="pills">
+              <label class="pill"><input type="checkbox" name="fundsSources" value="other_exchange"> Another exchange</label>
+              <label class="pill"><input type="checkbox" name="fundsSources" value="own_wallet"> My own wallet</label>
+              <label class="pill"><input type="checkbox" name="fundsSources" value="p2p"> P2P</label>
+              <label class="pill"><input type="checkbox" name="fundsSources" value="otc"> OTC</label>
+              <label class="pill"><input type="checkbox" name="fundsSources" value="defi"> DeFi</label>
+              <label class="pill"><input type="checkbox" name="fundsSources" value="unknown"> I am not sure</label>
+            </div>
+          </fieldset>
+          <fieldset class="field">
+            <legend>What you already have</legend>
+            <div class="pills">
+              <label class="pill"><input type="checkbox" name="evidence" value="bank_statements"> Bank statements</label>
+              <label class="pill"><input type="checkbox" name="evidence" value="income_docs"> Income records</label>
+              <label class="pill"><input type="checkbox" name="evidence" value="exchange_export"> An exchange export</label>
+              <label class="pill"><input type="checkbox" name="evidence" value="txid_only"> Only the TxID</label>
+              <label class="pill"><input type="checkbox" name="evidence" value="none"> Nothing else</label>
+            </div>
+          </fieldset>
           <div class="field">
-            <label for="origin">Where the funds came from</label>
-            <select id="origin" name="origin" required>
-              <option value="exchange_purchase">Bought on another exchange</option>
-              <option value="p2p">P2P</option>
-              <option value="otc">OTC</option>
-              <option value="salary">Salary paid in crypto</option>
-              <option value="mining_staking">Mining or staking</option>
-              <option value="defi_airdrop">DeFi or an airdrop</option>
-              <option value="goods_services">Goods or services</option>
-              <option value="transfer_person">A transfer from a person</option>
-              <option value="unknown">I do not know</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="hasDocuments">Do you have records of that origin?</label>
-            <select id="hasDocuments" name="hasDocuments">
-              <option value="">Not stated</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
+            <label for="disputedDepositsCount">Disputed deposits</label>
+            <input id="disputedDepositsCount" name="disputedDepositsCount" type="number" min="1" max="20" value="1" required inputmode="numeric">
           </div>
           <div class="field check">
-            <input id="priorRefusal" name="priorRefusal" type="checkbox" value="yes">
-            <label for="priorRefusal">An appeal was already refused</label>
+            <input id="priorExchangeRejection" name="priorExchangeRejection" type="checkbox" value="yes">
+            <label for="priorExchangeRejection">The exchange already rejected an appeal</label>
+          </div>
+          <div class="field" id="rounds-field" hidden>
+            <label for="priorRoundsCount">How many rounds did you already send?</label>
+            <input id="priorRoundsCount" name="priorRoundsCount" type="number" min="0" max="20" value="1" inputmode="numeric">
           </div>
           <input id="captchaToken" name="captchaToken" type="hidden" value="">
           <input id="clientId" name="clientId" type="hidden" value="">

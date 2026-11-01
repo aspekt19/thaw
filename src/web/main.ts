@@ -4,6 +4,7 @@ import '@fontsource/geist-sans/latin-600.css'
 import '@fontsource/geist-sans/latin-700.css'
 import '@fontsource/geist-mono/latin-500.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
+import { LIGHT_PICK_NOTE, downgradeWarning, type RuleId } from '../chance/tier.ts'
 
 const REASON_EN: Record<string, string> = {
   [REASON.police]: 'The notice says the hold is for the police or a court.',
@@ -99,6 +100,14 @@ type Result = {
   explanation?: string
   disclaimer?: string
   depositExplorer?: string | null
+  recommendation?: {
+    tier: 'light' | 'full'
+    reasonId: RuleId
+    reason: string
+    missing: string
+    priceUsd: number
+    note: string
+  } | null
 }
 
 type CaseInvoice = {
@@ -147,6 +156,11 @@ document.querySelectorAll<HTMLButtonElement>('#remainder .tier').forEach((button
 document.querySelector('#check-form')?.addEventListener('submit', (event) => {
   event.preventDefault()
   void sendCheck()
+})
+
+document.querySelector('#priorExchangeRejection')?.addEventListener('change', (event) => {
+  const on = (event.currentTarget as HTMLInputElement).checked
+  document.querySelector('#rounds-field')?.toggleAttribute('hidden', !on)
 })
 
 window.addEventListener('hashchange', route)
@@ -239,11 +253,23 @@ async function sendCheck(): Promise<void> {
 function payload(form: HTMLFormElement): Record<string, unknown> {
   const data = new FormData(form)
   const out: Record<string, unknown> = {}
+  const lists = new Map<string, string[]>()
   data.forEach((value, key) => {
     if (typeof value !== 'string' || value === '') return
-    out[key] = key === 'priorRefusal' ? true : value
+    if (key === 'fundsSources' || key === 'evidence') {
+      const list = lists.get(key) ?? []
+      list.push(value)
+      lists.set(key, list)
+      return
+    }
+    if (key === 'priorExchangeRejection') out[key] = true
+    else out[key] = value
   })
-  if (!out.priorRefusal) out.priorRefusal = false
+  for (const [key, list] of lists) out[key] = list
+  if (!out.fundsSources) out.fundsSources = []
+  if (!out.evidence) out.evidence = []
+  if (!out.priorExchangeRejection) out.priorExchangeRejection = false
+  if (!out.priorExchangeRejection) delete out.priorRoundsCount
   return out
 }
 
@@ -346,13 +372,79 @@ async function paintResult(): Promise<void> {
   root.append(subhead('Next step'))
   root.append(paragraph(nextStep(result.verdict)))
   root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
-  if (result.verdict === 'high' || result.verdict === 'medium') {
-    const row = document.createElement('div')
-    row.className = 'copy-row'
-    row.append(caseButton('light', 'Open the light file, $49'), caseButton('full', 'Open the full file, $79'))
-    root.append(row)
+  if ((result.verdict === 'high' || result.verdict === 'medium') && result.recommendation?.tier) {
+    root.append(recommendationBlock(result.recommendation))
   }
   stamp(root)
+}
+
+function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLElement {
+  const box = document.createElement('section')
+  box.className = 'recommend'
+  const title = document.createElement('h2')
+  title.textContent = rec.tier === 'full' ? 'We recommend the Full file' : 'We recommend the Light file'
+  const price = document.createElement('p')
+  price.className = 'sum'
+  price.textContent = rec.tier === 'full' ? '$79' : '$49'
+  const why = document.createElement('p')
+  why.textContent = rec.reason
+  const note = document.createElement('p')
+  note.textContent = rec.note
+  box.append(title, price, why, note)
+
+  const picks = document.createElement('div')
+  picks.className = 'copy-row'
+  const light = tierPick('light', 'Light file, $49', rec.tier === 'light')
+  const full = tierPick('full', 'Full file, $79', rec.tier === 'full')
+  picks.append(light, full)
+  box.append(picks)
+
+  const extra = document.createElement('div')
+  const warning = document.createElement('p')
+  warning.className = 'warn-box'
+  warning.hidden = true
+  const confirm = document.createElement('label')
+  confirm.className = 'field check'
+  confirm.hidden = true
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  const confirmText = document.createElement('span')
+  confirmText.textContent = 'I understand the Light file leaves that out, and I still want it.'
+  confirm.append(checkbox, confirmText)
+  const open = document.createElement('button')
+  open.type = 'button'
+  open.className = 'action cta'
+  open.textContent = rec.tier === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
+  let chosen: 'light' | 'full' = rec.tier
+  const refresh = () => {
+    light.classList.toggle('on', chosen === 'light')
+    full.classList.toggle('on', chosen === 'full')
+    const down = rec.tier === 'full' && chosen === 'light'
+    const up = rec.tier === 'light' && chosen === 'full'
+    warning.hidden = !down && !up
+    confirm.hidden = !down
+    if (down) warning.textContent = downgradeWarning(rec.reasonId)
+    if (up) warning.textContent = LIGHT_PICK_NOTE
+    open.textContent = chosen === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
+    open.disabled = down && !checkbox.checked
+  }
+  light.addEventListener('click', () => { chosen = 'light'; refresh() })
+  full.addEventListener('click', () => { chosen = 'full'; refresh() })
+  checkbox.addEventListener('change', refresh)
+  open.addEventListener('click', () => void openCase(chosen, open))
+  extra.append(warning, confirm, open)
+  box.append(extra)
+  refresh()
+  return box
+}
+
+function tierPick(tier: 'light' | 'full', label: string, on: boolean): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = on ? 'tier on' : 'tier'
+  button.dataset.tier = tier
+  button.textContent = label
+  return button
 }
 
 function nextStep(verdict: string): string {
@@ -361,15 +453,6 @@ function nextStep(verdict: string): string {
   }
   if (verdict === 'low') return 'We will not open a file on a low chance.'
   return 'We will not prepare papers for this notice.'
-}
-
-function caseButton(tier: 'light' | 'full', label: string): HTMLButtonElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'action cta'
-  button.textContent = label
-  button.addEventListener('click', () => void openCase(tier, button))
-  return button
 }
 
 async function openCase(tier: 'light' | 'full', button: HTMLButtonElement): Promise<void> {

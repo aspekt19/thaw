@@ -12,12 +12,14 @@ import {
 } from '@thaw/guard'
 import type { RpcCall } from '../chain/evm-rpc.ts'
 import { classifyDeposit, explorerUrl } from './address.ts'
+import { sourcesFromOrigin } from './parse.ts'
 import { formatUsd, type Category, type Verdict } from './constants.ts'
 import { categoriesInNotice } from './lexicon.ts'
 import { screenAddresses, type BanList } from './banlist.ts'
 import { lookupFirstHop, type HopLookup } from './lookup.ts'
 import { cacheKey, userKey, utcDay, type AsyncLimitStore, type LimitConfig } from './limits.ts'
 import { decide, type BanState } from './rules.ts'
+import { MISSING_LINE, PRODUCT_TIER_CONFIG, REASON_LINE, TIER_NOTE, recommendTier, type Exchange as TierExchange, type RuleId } from './tier.ts'
 import type { ChanceInput } from './parse.ts'
 
 const CATEGORY_LIST = [
@@ -90,6 +92,15 @@ export type PublicResult = {
   disclaimer: string
   /** Public explorer page for the deposit the person entered. Base uses basescan.org. */
   depositExplorer: string | null
+  /** Set only for a high or medium chance. SERV document labels are not connected, so those rules do not fire. */
+  recommendation: {
+    tier: 'light' | 'full'
+    reasonId: RuleId
+    reason: string
+    missing: string
+    priceUsd: number
+    note: string
+  } | null
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
 
@@ -255,10 +266,63 @@ export async function runChanceCheck(
     injection,
     disclaimer: DISCLAIMER,
     depositExplorer: depositLink(input.chain, input.deposit),
+    recommendation: recommendationFor(input, decision.verdict, lookup),
     paidPath: paidPathView(deps),
   }
   await deps.store.writeCache(key, result, now, deps.limits.cacheTtlMs)
   return result
+}
+
+function knownAddresses(lookup: HopLookup): number | null {
+  if (lookup.status !== 'ok') return null
+  const ids = new Set<string>()
+  if (lookup.sender) ids.add(lookup.sender.toLowerCase())
+  for (const hop of lookup.hop1) ids.add(hop.toLowerCase())
+  return ids.size
+}
+
+function tierExchange(exchange: ChanceInput['exchange']): TierExchange {
+  if (
+    exchange === 'binance' ||
+    exchange === 'okx' ||
+    exchange === 'bybit' ||
+    exchange === 'coinbase' ||
+    exchange === 'kraken' ||
+    exchange === 'kucoin' ||
+    exchange === 'other'
+  ) {
+    return exchange
+  }
+  return 'other'
+}
+
+function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLookup): PublicResult['recommendation'] {
+  if (verdict !== 'high' && verdict !== 'medium') return null
+  const picked = recommendTier(
+    {
+      exchange: tierExchange(input.exchange),
+      verdict,
+      addressesCount: knownAddresses(lookup),
+      fundsSources: input.fundsSources ?? sourcesFromOrigin(input.origin),
+      priorExchangeRejection: input.priorExchangeRejection ?? input.priorRefusal,
+      priorRoundsCount: input.priorRoundsCount,
+      // SERV is not connected, so these stay unknown and their rules do not fire.
+      requestedDocs: [],
+      ownershipProofRequested: false,
+      evidence: input.evidence ?? [],
+      disputedDepositsCount: input.disputedDepositsCount ?? 1,
+    },
+    PRODUCT_TIER_CONFIG,
+  )
+  if (!picked.tier || picked.reason === 'NOT_ELIGIBLE') return null
+  return {
+    tier: picked.tier,
+    reasonId: picked.reason,
+    reason: REASON_LINE[picked.reason],
+    missing: MISSING_LINE[picked.reason],
+    priceUsd: picked.tier === 'full' ? PRODUCT_TIER_CONFIG.price.full : PRODUCT_TIER_CONFIG.price.light,
+    note: TIER_NOTE,
+  }
 }
 
 function depositLink(chain: ChanceInput['chain'], deposit: string): string | null {
@@ -306,6 +370,11 @@ function decisionInput(input: ChanceInput): Record<string, unknown> {
     origin: input.origin,
     hasDocuments: input.hasDocuments,
     priorRefusal: input.priorRefusal,
+    fundsSources: input.fundsSources,
+    evidence: input.evidence,
+    priorExchangeRejection: input.priorExchangeRejection,
+    priorRoundsCount: input.priorRoundsCount,
+    disputedDepositsCount: input.disputedDepositsCount,
   }
 }
 
