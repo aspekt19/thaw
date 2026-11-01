@@ -1,156 +1,629 @@
-const form = document.querySelector<HTMLFormElement>('#check-form')
-const result = document.querySelector<HTMLElement>('#result')
-const submit = document.querySelector<HTMLButtonElement>('#submit')
-const clientId = document.querySelector<HTMLInputElement>('#clientId')
+import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
 
-if (clientId) clientId.value = browserId()
-
-const LABELS: Record<string, string> = {
-  high: 'Высокий шанс',
-  medium: 'Средний шанс',
-  low: 'Низкий шанс',
-  cannot_help: 'Помочь не сможем',
+const REASON_EN: Record<string, string> = {
+  [REASON.police]: 'The notice says the hold is for the police or a court.',
+  [REASON.sanctions]: 'The notice mentions sanctions.',
+  [REASON.theft]: 'The notice links the funds to theft or a victim report.',
+  [REASON.closure]: 'The notice says the account is finally closed.',
+  [REASON.servStop]: 'The notice was classed as a case we decline, and the rules kept that.',
+  [REASON.banned]: 'The address check returned a ban. That answer does not split a blacklist from sanctions.',
+  [REASON.ordinary]: 'The notice reads as an ordinary source-of-funds check, with no stop phrase from the list.',
+  [REASON.vague]: 'The notice has no familiar ordinary-check phrase and no stop phrase from the list.',
+  [REASON.banOff]: 'Paid address checks are off, so the rules will not call this a high chance.',
+  [REASON.banUnpaid]: 'The address check was not paid, so there is no result and this cannot be a high chance.',
+  [REASON.banUnknown]: 'The address check did not answer, so this cannot be a high chance.',
+  [REASON.lookupFail]: 'The deposit could not be read on chain.',
+  [REASON.hopFail]: 'The first hop could not be read.',
+  [REASON.amountMismatch]: 'The amount does not match the transfer on chain.',
+  [REASON.dateMismatch]: 'The date does not match the block date, compared as a UTC calendar day.',
+  [REASON.amountUnknown]: 'The amount could not be checked on chain.',
+  [REASON.dateUnknown]: 'The date could not be checked on chain.',
+  [REASON.p2pNone]: 'P2P with no records is harder to support.',
+  [REASON.p2pSome]: 'P2P with some records is not a high chance under these rules.',
+  [REASON.prior]: 'An appeal was already refused.',
+  [REASON.origin]: 'These rules treat only a purchase on another exchange as a high chance.',
+  [REASON.exchangeIgnored]: 'Per-exchange hopeless templates are not in the rules. That list was not verified.',
+  [REASON.pageLimit]: 'The first hop is up to ten incoming transfers from one page of history, not the whole history.',
+  [RAISE.statement]: 'A bank or exchange statement that shows the purchase.',
+  [RAISE.p2p]: 'P2P trade history and the messages with the counterparty.',
+  [RAISE.video]: 'A video of the withdrawal from the source platform.',
+  [RAISE.tax]: 'A tax return that shows the income.',
+  [RAISE.explainGap]: 'An explanation of why the amount or the date does not match.',
+  [RAISE.ban]: 'A sanctions and blacklist check on the sender and the first hop.',
+  [RAISE.lawyer]: 'A police or court hold needs a lawyer. Our papers do not replace one.',
+  [RAISE.noHelp]: 'Our papers do not raise the chance here. Do not pay anyone who promises a release.',
+  [EXPLAIN.high]: 'This looks like an ordinary check. Those requests are usually answered with papers. We cannot guarantee the outcome.',
+  [EXPLAIN.medium]: 'There is an indirect risk in the history of the funds. The chance depends on how fully you can show where they came from.',
+  [EXPLAIN.low]: 'The chance is low. The reasons say what is in the way, and what could help.',
+  [EXPLAIN.cannot_help]: 'Our papers will not help this notice. Do not pay anyone who promises a release.',
 }
 
-form?.addEventListener('submit', (event) => {
-  event.preventDefault()
-  void send()
+const PAY_ERROR: Record<string, string> = {
+  not_mined: 'That transaction is not in a block yet. Leave this page open.',
+  failed: 'The transaction failed on chain.',
+  no_transfer: 'No matching USDC transfer was found in that transaction.',
+  wrong_token: 'That transfer is not USDC on this network.',
+  wrong_recipient: 'The USDC did not go to the address on this invoice.',
+  wrong_amount: 'The amount does not match. Send the exact figure, including the fraction.',
+  confirmations: 'The transfer needs more confirmations. Leave this page open.',
+  rpc: 'The chain check did not answer. We will try again.',
+  reused: 'That transfer was already used on another invoice.',
+  payment_not_configured: 'This server has no USDC address, so it cannot open an invoice.',
+  unpaid: 'Open a case only after the check is paid.',
+  verdict: 'A file opens only when the chance is high or medium.',
+  tier: 'This check already has a file on the other price.',
+  input: 'Check the form. Something required is missing or not in the right shape.',
+  json: 'The server could not read that request.',
+  amount: 'Could not reserve a unique amount. Try again.',
+  tx: 'Paste the transaction hash.',
+  not_found: 'That invoice is not on this server.',
+  price: 'The price on the server could not be read.',
+  method: 'Wrong request.',
+}
+
+const LEVEL: Record<string, string> = {
+  high: 'High chance',
+  medium: 'Medium chance',
+  low: 'Low chance',
+  cannot_help: 'We cannot take this',
+}
+
+type Order = {
+  ok?: boolean
+  code?: string
+  error?: string
+  orderId?: string
+  status?: string
+  paid?: boolean
+  chain?: string
+  token?: string
+  recipient?: string
+  amountAtomic?: string
+  amountUsd?: string
+  priceUsd?: string
+  feeCreditMicro?: number
+  result?: Result
+}
+
+type Result = {
+  ok?: boolean
+  verdict?: string
+  reasons?: string[]
+  whatWouldRaiseChance?: string[]
+  explanation?: string
+  disclaimer?: string
+}
+
+type CaseInvoice = {
+  ok?: boolean
+  code?: string
+  error?: string
+  caseId?: string
+  orderId?: string
+  tier?: string
+  status?: string
+  paid?: boolean
+  priceUsd?: string
+  feeUsd?: string
+  netUsd?: string
+  netMicro?: number
+  chain?: string | null
+  token?: string | null
+  recipient?: string
+  amountAtomic?: string | null
+  amountUsd?: string | null
+}
+
+const ORDER_KEY = 'thaw.order'
+const CASE_KEY = 'thaw.case'
+const TX_KEY = 'thaw.tx'
+const CASE_TX_KEY = 'thaw.caseTx'
+
+let pollTimer = 0
+
+const clientId = document.querySelector<HTMLInputElement>('#clientId')
+if (clientId) clientId.value = browserId()
+
+document.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const tier = button.dataset.pick === 'full' ? 'full' : 'light'
+    setTier(tier)
+    document.getElementById('remainder')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
 })
 
-async function send(): Promise<void> {
-  if (!form || !result || !submit) return
+document.querySelectorAll<HTMLButtonElement>('#remainder .tier').forEach((button) => {
+  button.addEventListener('click', () => setTier(button.dataset.tier === 'full' ? 'full' : 'light'))
+})
+
+document.querySelector('#check-form')?.addEventListener('submit', (event) => {
+  event.preventDefault()
+  void sendCheck()
+})
+
+window.addEventListener('hashchange', route)
+route()
+
+function stopPoll(): void {
+  window.clearInterval(pollTimer)
+  pollTimer = 0
+}
+
+function route(): void {
+  stopPoll()
+  const id = location.hash.replace(/^#/, '') || 'top'
+  if (id === 'top' || id === 'prices' || id === 'questions' || id === 'how') {
+    show('home')
+    if (id !== 'top') document.getElementById(id)?.scrollIntoView()
+    return
+  }
+  const views = ['check', 'invoice', 'result', 'case', 'terms', 'privacy']
+  if (views.includes(id)) {
+    show(id)
+    if (id === 'invoice') void paintInvoice()
+    if (id === 'result') void paintResult()
+    if (id === 'case') void paintCase()
+    return
+  }
+  show('home')
+}
+
+function show(name: string): void {
+  document.querySelectorAll<HTMLElement>('[data-view]').forEach((view) => {
+    view.toggleAttribute('hidden', view.dataset.view !== name)
+  })
+  if (name !== 'home') window.scrollTo(0, 0)
+}
+
+function setTier(tier: 'light' | 'full'): void {
+  document.querySelectorAll<HTMLButtonElement>('#remainder .tier').forEach((button) => {
+    button.classList.toggle('on', button.dataset.tier === tier)
+  })
+  const price = tier === 'full' ? 79 : 49
+  const remainder = price - 1
+  const figure = document.querySelector('#remainder-figure')
+  const line = document.querySelector('#remainder-line')
+  const sample = document.querySelector('#sample-figure')
+  if (figure) figure.textContent = `$${remainder}.00`
+  if (line) line.textContent = `$${price} file, minus the $1 check. A live invoice adds under $0.10 so two open invoices never match.`
+  if (sample) sample.textContent = `${remainder}.000000 USDC`
+}
+
+async function sendCheck(): Promise<void> {
+  const form = document.querySelector<HTMLFormElement>('#check-form')
+  const submit = document.querySelector<HTMLButtonElement>('#submit')
+  const error = document.querySelector('#form-error')
+  if (!form || !submit || !error) return
   submit.disabled = true
-  result.replaceChildren()
+  error.textContent = ''
   try {
     const response = await fetch(form.action, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(payload()),
+      body: JSON.stringify(payload(form)),
     })
-    const body = (await response.json()) as Record<string, unknown>
-    if (body.paymentRequired === true) renderPayment(result, body)
-    else render(result, body)
+    const body = (await response.json()) as Order
+    if (body.orderId) {
+      sessionStorage.setItem(ORDER_KEY, body.orderId)
+      sessionStorage.removeItem(TX_KEY)
+      location.hash = 'invoice'
+      return
+    }
+    error.textContent = say(body.code, body.error)
   } catch {
-    const p = document.createElement('p')
-    p.className = 'error'
-    p.textContent = 'Не удалось отправить форму.'
-    result.append(p)
+    error.textContent = 'The form did not send. Try again.'
   } finally {
     submit.disabled = false
   }
 }
 
-function payload(): Record<string, unknown> {
-  const data = new FormData(form ?? undefined)
+function payload(form: HTMLFormElement): Record<string, unknown> {
+  const data = new FormData(form)
   const out: Record<string, unknown> = {}
   data.forEach((value, key) => {
     if (typeof value !== 'string' || value === '') return
-    if (key === 'priorRefusal') out[key] = true
-    else out[key] = value
+    out[key] = key === 'priorRefusal' ? true : value
   })
   if (!out.priorRefusal) out.priorRefusal = false
   return out
 }
 
-function renderPayment(root: HTMLElement, body: Record<string, unknown>): void {
-  const title = document.createElement('h2')
-  title.textContent = 'Счёт на проверку'
-  const lines = [
-    `Сеть: ${text(body.chain)}`,
-    `Контракт USDC: ${text(body.token)}`,
-    `Получатель: ${text(body.recipient)}`,
-    `Сумма, атомарно: ${text(body.amountAtomic)}`,
-    `Сумма USDC: ${text(body.amountUsd)}`,
-    `Заказ: ${text(body.orderId)}`,
-    text(body.note),
-  ]
-  root.append(title)
-  for (const line of lines) {
-    const p = document.createElement('p')
-    p.textContent = line
-    root.append(p)
-  }
-  const label = document.createElement('label')
-  label.htmlFor = 'tx-hash'
-  label.textContent = 'Хеш перевода'
-  const input = document.createElement('input')
-  input.id = 'tx-hash'
-  input.autocomplete = 'off'
-  input.spellcheck = false
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.textContent = 'Я перевёл'
-  button.addEventListener('click', () => {
-    void confirmPay(text(body.orderId), input.value, root)
-  })
-  root.append(label, input, button)
-}
-
-async function confirmPay(orderId: string, txHash: string, root: HTMLElement): Promise<void> {
-  const response = await fetch(`/api/check-orders/${encodeURIComponent(orderId)}/confirm`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ txHash }),
-  })
-  const body = (await response.json()) as Record<string, unknown>
+async function paintInvoice(): Promise<void> {
+  stopPoll()
+  const root = document.querySelector('#invoice-root')
+  const id = sessionStorage.getItem(ORDER_KEY)
+  if (!root) return
   root.replaceChildren()
-  render(root, body)
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
-function render(root: HTMLElement, body: Record<string, unknown>): void {
-  if (body.ok !== true) {
-    const p = document.createElement('p')
-    p.className = 'error'
-    p.textContent = typeof body.error === 'string' ? body.error : 'Проверка не выполнена.'
-    root.append(p)
+  if (!id) {
+    root.append(heading('No invoice yet'), paragraph('Start with the chance check. The invoice is created when the form is accepted.'))
+    root.append(link('Check the chance', '#check'))
     return
   }
-  const verdict = typeof body.verdict === 'string' ? body.verdict : ''
-  const title = document.createElement('h2')
-  title.textContent = LABELS[verdict] ?? 'Результат'
-  if (verdict === 'high') title.className = 'verdict-high'
-  root.append(title)
-  addParagraph(root, body.explanation)
-  if (body.cached === true) addParagraph(root, 'Этот депозит уже проверяли за последние сутки. Показан сохранённый результат.')
-  addList(root, 'Почему', body.reasons)
-  addList(root, 'Что может повысить шанс', body.whatWouldRaiseChance)
-  addParagraph(root, body.disclaimer)
-}
-
-function addParagraph(root: HTMLElement, value: unknown): void {
-  if (typeof value !== 'string' || value === '') return
-  const p = document.createElement('p')
-  p.textContent = value
-  root.append(p)
-}
-
-function addList(root: HTMLElement, title: string, value: unknown): void {
-  if (!Array.isArray(value) || value.length === 0) return
-  const h = document.createElement('h3')
-  h.textContent = title
-  const list = document.createElement('ul')
-  for (const item of value) {
-    if (typeof item !== 'string') continue
-    const li = document.createElement('li')
-    li.textContent = item
-    list.append(li)
+  const order = await getJson<Order>(`/api/check-orders/${id}`)
+  if (!order?.orderId) {
+    root.append(heading('Invoice not found'), paragraph(say(order?.code, order?.error)))
+    return
   }
-  root.append(h, list)
+  if (order.paid && order.result) {
+    location.hash = 'result'
+    return
+  }
+  root.append(invoiceBlock({
+    title: 'Pay the check',
+    lead: 'Send this exact amount of USDC on Base. A round $1 will not match. The check fee is credited if you open a file on this same check.',
+    amount: order.amountUsd ? `${order.amountUsd} USDC` : '',
+    rows: [
+      ['Network', order.chain ?? 'base'],
+      ['USDC contract', order.token ?? ''],
+      ['Send to', order.recipient ?? ''],
+      ['Exact amount', order.amountUsd ? `${order.amountUsd} USDC` : ''],
+      ['Atomic units', order.amountAtomic ?? ''],
+      ['Invoice', order.orderId ?? ''],
+    ],
+    steps: [
+      'In your own wallet, switch to Base.',
+      'Send USDC, not ETH, to the address above.',
+      'Use the exact amount, including the fraction after the dollar.',
+      'Paste the transaction hash below. We read the transfer on chain. We never ask for a key or a seed phrase.',
+    ],
+    hashKey: TX_KEY,
+    onSubmit: (tx) => confirm(`/api/check-orders/${id}/confirm`, tx, TX_KEY),
+  }))
+  pollTimer = window.setInterval(() => void refreshOrder(id), 4000)
+}
+
+async function refreshOrder(id: string): Promise<void> {
+  const tx = sessionStorage.getItem(TX_KEY)
+  if (tx) await confirm(`/api/check-orders/${id}/confirm`, tx, TX_KEY, true)
+  const order = await getJson<Order>(`/api/check-orders/${id}`)
+  const status = document.querySelector('#pay-status')
+  if (!status || !order) return
+  if (order.paid) {
+    status.textContent = 'Paid. Opening the result.'
+    location.hash = 'result'
+    return
+  }
+  if (!tx) status.textContent = 'Waiting for the transfer.'
+}
+
+async function paintResult(): Promise<void> {
+  const root = document.querySelector('#result-root')
+  const id = sessionStorage.getItem(ORDER_KEY)
+  if (!root) return
+  root.replaceChildren()
+  if (!id) {
+    root.append(heading('No result yet'), paragraph('Run the check first.'))
+    return
+  }
+  const order = await getJson<Order>(`/api/check-orders/${id}`)
+  const result = order?.result
+  if (!order?.paid || !result?.verdict) {
+    root.append(heading('The check is not paid'), paragraph('The result appears after the USDC transfer is verified.'))
+    root.append(link('Back to the invoice', '#invoice'))
+    return
+  }
+  const level = LEVEL[result.verdict] ?? result.verdict
+  root.append(heading(level))
+  root.append(paragraph(english(result.explanation) || 'The level comes from the rules on the notice and the public transfer.'))
+  root.append(subhead('Reasons'))
+  root.append(list(result.reasons ?? []))
+  const raises = result.whatWouldRaiseChance ?? []
+  if (raises.length) {
+    root.append(subhead('What would raise the chance'))
+    root.append(list(raises))
+  }
+  root.append(subhead('Next step'))
+  root.append(paragraph(nextStep(result.verdict)))
+  root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
+  if (result.verdict === 'high' || result.verdict === 'medium') {
+    const row = document.createElement('div')
+    row.className = 'copy-row'
+    row.append(caseButton('light', 'Open the light file, $49'), caseButton('full', 'Open the full file, $79'))
+    root.append(row)
+  }
+}
+
+function nextStep(verdict: string): string {
+  if (verdict === 'high' || verdict === 'medium') {
+    return 'You can open a light file at $49 or a full file at $79. The check you paid is subtracted. The remainder is a second USDC invoice, and the file stays unpaid until that transfer is verified.'
+  }
+  if (verdict === 'low') return 'We will not open a file on a low chance.'
+  return 'We will not prepare papers for this notice.'
+}
+
+function caseButton(tier: 'light' | 'full', label: string): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'action'
+  button.textContent = label
+  button.addEventListener('click', () => void openCase(tier, button))
+  return button
+}
+
+async function openCase(tier: 'light' | 'full', button: HTMLButtonElement): Promise<void> {
+  const id = sessionStorage.getItem(ORDER_KEY)
+  if (!id) return
+  button.disabled = true
+  const response = await fetch('/api/cases', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ orderId: id, tier }),
+  })
+  const body = (await response.json()) as CaseInvoice
+  button.disabled = false
+  if (!body.caseId) {
+    const root = document.querySelector('#result-root')
+    const note = document.createElement('p')
+    note.className = 'warn'
+    note.textContent = say(body.code, body.error)
+    root?.append(note)
+    return
+  }
+  sessionStorage.setItem(CASE_KEY, body.caseId)
+  sessionStorage.removeItem(CASE_TX_KEY)
+  location.hash = 'case'
+}
+
+async function paintCase(): Promise<void> {
+  stopPoll()
+  const root = document.querySelector('#case-root')
+  const id = sessionStorage.getItem(CASE_KEY)
+  if (!root) return
+  root.replaceChildren()
+  if (!id) {
+    root.append(heading('No file invoice'), paragraph('Open a file from a high or medium result.'))
+    return
+  }
+  const row = await getJson<CaseInvoice>(`/api/cases/${id}`)
+  if (!row?.caseId) {
+    root.append(heading('File not found'), paragraph(say(row?.code, row?.error)))
+    return
+  }
+  if (row.paid && !row.amountAtomic) {
+    root.append(heading('The file is paid'), paragraph('The check fee covered the whole price, so there is no second transfer.'))
+    root.append(paragraph('Preparing the papers in the browser is not on this page yet.'))
+    return
+  }
+  if (row.paid) {
+    root.append(heading('The remainder is paid'), paragraph(`${tierName(row.tier)} is paid. The check credit was ${row.feeUsd ?? ''} USD of the ${row.priceUsd ?? ''} USD price.`))
+    root.append(paragraph('Preparing the papers in the browser is not on this page yet. Payment does not mean the withdrawal will be released.'))
+    return
+  }
+  root.append(invoiceBlock({
+    title: 'Pay the remainder',
+    lead: `${tierName(row.tier)} is ${row.priceUsd} USD. The check credit is ${row.feeUsd} USD. You pay the rest, plus a unique fraction under $0.10.`,
+    amount: row.amountUsd ? `${row.amountUsd} USDC` : '',
+    rows: [
+      ['Network', row.chain ?? 'base'],
+      ['USDC contract', row.token ?? ''],
+      ['Send to', row.recipient ?? ''],
+      ['Price', row.priceUsd ? `${row.priceUsd} USD` : ''],
+      ['Check already paid', row.feeUsd ? `${row.feeUsd} USD` : ''],
+      ['Remainder before the fraction', row.netUsd ? `${row.netUsd} USD` : ''],
+      ['Exact amount', row.amountUsd ? `${row.amountUsd} USDC` : ''],
+      ['Atomic units', row.amountAtomic ?? ''],
+      ['File', row.caseId],
+    ],
+    steps: [
+      'Send USDC on Base from your own wallet.',
+      'Match the exact amount. The credit is already subtracted.',
+      'Paste the new transaction hash. The hash that paid the check cannot pay this invoice.',
+      'The file is marked paid only after the chain check passes.',
+    ],
+    hashKey: CASE_TX_KEY,
+    onSubmit: (tx) => confirm(`/api/cases/${id}/confirm`, tx, CASE_TX_KEY),
+  }))
+  pollTimer = window.setInterval(() => void refreshCase(id), 4000)
+}
+
+async function refreshCase(id: string): Promise<void> {
+  const tx = sessionStorage.getItem(CASE_TX_KEY)
+  if (tx) await confirm(`/api/cases/${id}/confirm`, tx, CASE_TX_KEY, true)
+  const row = await getJson<CaseInvoice>(`/api/cases/${id}`)
+  const title = document.querySelector('#case-root h1')?.textContent ?? ''
+  if (row?.paid && !/paid/i.test(title)) void paintCase()
+}
+
+function invoiceBlock(opts: {
+  title: string
+  lead: string
+  amount: string
+  rows: Array<[string, string]>
+  steps: string[]
+  hashKey: string
+  onSubmit: (tx: string) => Promise<void>
+}): HTMLElement {
+  const wrap = document.createElement('div')
+  wrap.className = 'invoice'
+  const left = document.createElement('div')
+  left.append(heading(opts.title), paragraph(opts.lead))
+  const amount = document.createElement('p')
+  amount.className = 'amount'
+  amount.textContent = opts.amount
+  left.append(amount)
+  const steps = document.createElement('ol')
+  steps.className = 'steps'
+  for (const step of opts.steps) {
+    const li = document.createElement('li')
+    li.textContent = step
+    steps.append(li)
+  }
+  left.append(steps)
+  const right = document.createElement('div')
+  const facts = document.createElement('dl')
+  facts.className = 'meta'
+  for (const [name, value] of opts.rows) {
+    const row = document.createElement('div')
+    const dt = document.createElement('dt')
+    dt.textContent = name
+    const dd = document.createElement('dd')
+    dd.textContent = value
+    row.append(dt, dd)
+    facts.append(row)
+  }
+  const copies = document.createElement('div')
+  copies.className = 'copy-row'
+  const amountRow = opts.rows.find(([name]) => name === 'Exact amount')
+  const toRow = opts.rows.find(([name]) => name === 'Send to')
+  if (amountRow) copies.append(copyButton('Copy the amount', amountRow[1].replace(' USDC', '')))
+  if (toRow) copies.append(copyButton('Copy the address', toRow[1]))
+  const form = document.createElement('form')
+  form.className = 'stack'
+  const label = document.createElement('label')
+  label.htmlFor = 'tx-hash'
+  label.textContent = 'Transaction hash'
+  const input = document.createElement('input')
+  input.id = 'tx-hash'
+  input.required = true
+  input.autocomplete = 'off'
+  input.spellcheck = false
+  input.value = sessionStorage.getItem(opts.hashKey) ?? ''
+  const button = document.createElement('button')
+  button.className = 'action'
+  button.type = 'submit'
+  button.textContent = 'I sent it'
+  const status = document.createElement('p')
+  status.id = 'pay-status'
+  status.className = 'status'
+  status.textContent = input.value ? 'Checking the transaction.' : 'Waiting for the transfer.'
+  form.append(label, input, button)
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const tx = input.value.trim()
+    if (!tx) return
+    sessionStorage.setItem(opts.hashKey, tx)
+    void opts.onSubmit(tx)
+  })
+  right.append(facts, copies, form, status)
+  wrap.append(left, right)
+  return wrap
+}
+
+async function confirm(url: string, tx: string, key: string, quiet = false): Promise<void> {
+  sessionStorage.setItem(key, tx)
+  const status = document.querySelector('#pay-status')
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ txHash: tx }),
+  })
+  const body = (await response.json()) as { code?: string; error?: string; paid?: boolean; ok?: boolean; verdict?: string }
+  if (response.ok && (body.paid || body.verdict)) {
+    if (status) status.textContent = 'Paid.'
+    if (url.includes('/cases/')) {
+      if (location.hash === '#case') void paintCase()
+      else location.hash = 'case'
+    } else if (location.hash !== '#result') location.hash = 'result'
+    return
+  }
+  if (!quiet && status) status.textContent = say(body.code, body.error)
+  if (quiet && status && (body.code === 'not_mined' || body.code === 'confirmations' || body.code === 'rpc')) {
+    status.textContent = say(body.code, body.error)
+  }
+}
+
+function copyButton(label: string, value: string): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'action ghost'
+  button.textContent = label
+  button.addEventListener('click', () => {
+    void navigator.clipboard?.writeText(value).then(() => {
+      button.textContent = 'Copied'
+    }).catch(() => {
+      button.textContent = 'Select the figure and copy it'
+    })
+  })
+  return button
+}
+
+function heading(text: string): HTMLHeadingElement {
+  const h = document.createElement('h1')
+  h.textContent = text
+  return h
+}
+
+function subhead(text: string): HTMLHeadingElement {
+  const h = document.createElement('h2')
+  h.textContent = text
+  return h
+}
+
+function paragraph(text: string): HTMLParagraphElement {
+  const p = document.createElement('p')
+  p.textContent = text
+  return p
+}
+
+function list(items: string[]): HTMLElement {
+  const ul = document.createElement('ul')
+  ul.className = 'reasons'
+  for (const item of items) {
+    const li = document.createElement('li')
+    li.textContent = english(item)
+    ul.append(li)
+  }
+  return ul
+}
+
+function link(text: string, href: string): HTMLAnchorElement {
+  const a = document.createElement('a')
+  a.className = 'action'
+  a.href = href
+  a.textContent = text
+  return a
+}
+
+function english(text: string | undefined): string {
+  if (!text) return ''
+  return REASON_EN[text] ?? text
+}
+
+function say(code: string | undefined, fallback: string | undefined): string {
+  if (code && PAY_ERROR[code]) return PAY_ERROR[code]
+  return fallback || 'That did not work.'
+}
+
+function tierName(tier: string | undefined): string {
+  return tier === 'full' ? 'The full file' : 'The light file'
+}
+
+async function getJson<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url, { headers: { accept: 'application/json' } })
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
 }
 
 function browserId(): string {
-  const key = 'thaw.clientId'
-  try {
-    const existing = localStorage.getItem(key)
-    if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing
-    const created = crypto.randomUUID()
-    localStorage.setItem(key, created)
-    return created
-  } catch {
-    return ''
-  }
+  const key = 'thaw.client'
+  const saved = localStorage.getItem(key)
+  if (saved && /^[A-Za-z0-9_-]{8,64}$/.test(saved)) return saved
+  const next = crypto.randomUUID().replace(/-/g, '')
+  localStorage.setItem(key, next)
+  return next
 }
+
+function rise(): void {
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-rise]'))
+  const mark = (el: HTMLElement, index: number) => {
+    el.style.animationDelay = `${Math.min(index, 8) * 70}ms`
+    el.classList.add('go')
+  }
+  if (!('IntersectionObserver' in window)) {
+    nodes.forEach(mark)
+    return
+  }
+  const seen = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      mark(entry.target as HTMLElement, nodes.indexOf(entry.target as HTMLElement))
+      seen.unobserve(entry.target)
+    }
+  }, { threshold: 0.2 })
+  nodes.forEach((node) => seen.observe(node))
+}
+
+rise()

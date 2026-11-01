@@ -96,6 +96,20 @@ export async function consumePayment(db: SqlDb, args: { chain: string; txHash: s
   }
 }
 
+export type CaseRow = {
+  id: string
+  order_id: string
+  price_micro: number
+  fee_credit_micro: number
+  net_micro: number
+  created_at: number
+  status: string
+  tier: string | null
+  chain: string | null
+  amount_atomic: string | null
+  tx_hash: string | null
+}
+
 export async function insertCase(
   db: SqlDb,
   row: { id: string; orderId: string; priceMicro: number; feeCreditMicro: number; netMicro: number; createdAt: number },
@@ -104,4 +118,70 @@ export async function insertCase(
     .prepare('INSERT INTO cases (id, order_id, price_micro, fee_credit_micro, net_micro, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(row.id, row.orderId, row.priceMicro, row.feeCreditMicro, row.netMicro, row.createdAt)
     .run()
+}
+
+export async function getCase(db: SqlDb, id: string): Promise<CaseRow | null> {
+  return db.prepare('SELECT * FROM cases WHERE id = ?').bind(id).first<CaseRow>()
+}
+
+export async function getCaseForOrder(db: SqlDb, orderId: string): Promise<CaseRow | null> {
+  return db.prepare('SELECT * FROM cases WHERE order_id = ? ORDER BY created_at DESC').bind(orderId).first<CaseRow>()
+}
+
+/** False when the open amount is already taken by another unpaid case. */
+export async function insertCaseInvoice(
+  db: SqlDb,
+  row: {
+    id: string
+    orderId: string
+    tier: string
+    priceMicro: number
+    feeCreditMicro: number
+    netMicro: number
+    createdAt: number
+    status: 'awaiting_payment' | 'paid'
+    chain: string | null
+    amountAtomic: string | null
+  },
+): Promise<boolean> {
+  try {
+    await db
+      .prepare(
+        'INSERT INTO cases (id, order_id, price_micro, fee_credit_micro, net_micro, created_at, status, tier, chain, amount_atomic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(
+        row.id,
+        row.orderId,
+        row.priceMicro,
+        row.feeCreditMicro,
+        row.netMicro,
+        row.createdAt,
+        row.status,
+        row.tier,
+        row.chain,
+        row.amountAtomic,
+      )
+      .run()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Marks the transfer used and the case paid. False if that transfer was already used. */
+export async function consumeCasePayment(db: SqlDb, args: { chain: string; txHash: string; orderId: string; caseId: string }): Promise<boolean> {
+  try {
+    await db.batch([
+      db
+        .prepare('INSERT INTO used_transfers (chain, tx_hash, order_id, case_id) VALUES (?, ?, ?, ?)')
+        .bind(args.chain, args.txHash.toLowerCase(), args.orderId, args.caseId),
+      db
+        .prepare("UPDATE cases SET status = 'paid', tx_hash = ? WHERE id = ? AND status = 'awaiting_payment'")
+        .bind(args.txHash.toLowerCase(), args.caseId),
+    ])
+    const row = await getCase(db, args.caseId)
+    return row?.status === 'paid'
+  } catch {
+    return false
+  }
 }

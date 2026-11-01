@@ -6,7 +6,7 @@ import { defaultLimitConfig } from './chance/limits.ts'
 import { parseChanceInput, type ChanceInput } from './chance/parse.ts'
 import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
-import { consumePayment, d1LimitStore, getOrder, insertCase, insertOrder } from './db/d1-store.ts'
+import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
 
@@ -128,9 +128,24 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
     return confirmOrder(request, env, decodeURIComponent(confirm[1] ?? ''))
   }
+  const orderRead = /^\/(?:api|v1)\/check-orders\/([^/]+)$/.exec(path)
+  if (orderRead) {
+    if (request.method !== 'GET') return json({ ok: false, code: 'method', error: 'Нужен GET.' }, 405)
+    return readOrder(env, decodeURIComponent(orderRead[1] ?? ''))
+  }
   if (path === '/api/cases' || path === '/v1/cases') {
-    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
     return openCase(request, env)
+  }
+  const caseConfirm = /^\/(?:api|v1)\/cases\/([^/]+)\/confirm$/.exec(path)
+  if (caseConfirm) {
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
+    return confirmCase(request, env, decodeURIComponent(caseConfirm[1] ?? ''))
+  }
+  const caseRead = /^\/(?:api|v1)\/cases\/([^/]+)$/.exec(path)
+  if (caseRead) {
+    if (request.method !== 'GET') return json({ ok: false, code: 'method', error: 'Use GET.' }, 405)
+    return readCase(env, decodeURIComponent(caseRead[1] ?? ''))
   }
   if (path === '/api/check-chance' || path === '/v1/check-chance') {
     return json(
@@ -188,7 +203,7 @@ async function createOrder(request: Request, env: Env): Promise<Response> {
         amountAtomic,
         amountUsd: (Number(amountAtomic) / 1_000_000).toFixed(6),
         priceUsd: (priceMicro / 1_000_000).toFixed(2),
-        note: 'Переведите ровно эту сумму USDC. Она зачтётся в цену дела, если вы откроете дело по этому заказу.',
+        note: 'Send this exact USDC amount. It is credited toward a case opened from this same check.',
       },
       201,
     )
@@ -237,33 +252,150 @@ async function confirmOrder(request: Request, env: Env, orderId: string): Promis
   return json(result, 200)
 }
 
+async function readOrder(env: Env, orderId: string): Promise<Response> {
+  const order = await getOrder(env.DB, orderId)
+  if (!order) return json({ ok: false, code: 'not_found', error: 'Заказ не найден.' }, 404)
+  return json(orderView(env, order), 200)
+}
+
+function orderView(env: Env, order: NonNullable<Awaited<ReturnType<typeof getOrder>>>): Record<string, unknown> {
+  const chain = isPaymentChain(order.chain) ? order.chain : paymentChainOf(env)
+  const view: Record<string, unknown> = {
+    ok: true,
+    orderId: order.id,
+    status: order.status,
+    paid: order.status === 'paid',
+    chain,
+    token: USDC_CONTRACT[chain],
+    recipient: env.THAW_USDC_ADDRESS?.trim() ?? '',
+    amountAtomic: order.amount_atomic,
+    amountUsd: (Number(order.amount_atomic) / 1_000_000).toFixed(6),
+    priceUsd: (order.price_micro / 1_000_000).toFixed(2),
+    feeCreditMicro: order.fee_credit_micro,
+  }
+  if (order.status === 'paid' && order.result_json) view.result = JSON.parse(order.result_json)
+  return view
+}
+
 async function openCase(request: Request, env: Env): Promise<Response> {
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return json({ ok: false, code: 'json', error: 'Не удалось прочитать запрос.' }, 400)
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
   }
   const row = body && typeof body === 'object' ? (body as { orderId?: unknown; tier?: unknown }) : {}
   if (typeof row.orderId !== 'string' || (row.tier !== 'light' && row.tier !== 'full')) {
-    return json({ ok: false, code: 'input', error: 'Нужны orderId и tier light или full.' }, 400)
+    return json({ ok: false, code: 'input', error: 'Send orderId and tier light or full.' }, 400)
   }
   const order = await getOrder(env.DB, row.orderId)
   if (!order || order.status !== 'paid' || !order.result_json) {
-    return json({ ok: false, code: 'unpaid', error: 'Дело открывается только по оплаченной проверке.' }, 402)
+    return json({ ok: false, code: 'unpaid', error: 'A case opens only after the check is paid.' }, 402)
   }
   const verdict = (JSON.parse(order.result_json) as { verdict?: string }).verdict
   if (verdict !== 'high' && verdict !== 'medium') {
-    return json({ ok: false, code: 'verdict', error: 'Дело открывается при высоком или среднем шансе.' }, 403)
+    return json({ ok: false, code: 'verdict', error: 'A case opens only when the chance is high or medium.' }, 403)
+  }
+  const existing = await getCaseForOrder(env.DB, order.id)
+  if (existing) {
+    if (existing.tier && existing.tier !== row.tier) {
+      return json({ ok: false, code: 'tier', error: 'This check already has a case on the other tier.' }, 409)
+    }
+    return json(caseView(env, existing, true), 200)
   }
   const fallback = row.tier === 'light' ? '49' : '79'
   const priceMicro = parseUsdToMicro(row.tier === 'light' ? env.THAW_CASE_LIGHT_USD : env.THAW_CASE_FULL_USD, fallback)
-  if (priceMicro == null) return json({ ok: false, code: 'price', error: 'Цена дела не читается.' }, 500)
+  if (priceMicro == null) return json({ ok: false, code: 'price', error: 'The case price could not be read.' }, 500)
   const fee = Math.min(order.fee_credit_micro, priceMicro)
   const net = priceMicro - fee
-  const id = crypto.randomUUID()
-  await insertCase(env.DB, { id, orderId: order.id, priceMicro, feeCreditMicro: fee, netMicro: net, createdAt: Date.now() })
-  return json({ ok: true, caseId: id, orderId: order.id, priceMicro, feeCreditMicro: fee, netMicro: net, paid: false }, 201)
+  const chain = paymentChainOf(env)
+  const recipient = env.THAW_USDC_ADDRESS?.trim() ?? ''
+  if (net > 0 && !/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+    return json({ ok: false, code: 'payment_not_configured', error: 'The USDC address is not set.' }, 503)
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = crypto.randomUUID()
+    const amountAtomic = net === 0 ? null : uniqueAtomic(net)
+    const ok = await insertCaseInvoice(env.DB, {
+      id,
+      orderId: order.id,
+      tier: row.tier,
+      priceMicro,
+      feeCreditMicro: fee,
+      netMicro: net,
+      createdAt: Date.now(),
+      status: net === 0 ? 'paid' : 'awaiting_payment',
+      chain: net === 0 ? null : chain,
+      amountAtomic,
+    })
+    if (!ok) continue
+    const saved = await getCase(env.DB, id)
+    if (!saved) return json({ ok: false, code: 'internal', error: 'The case was not stored.' }, 500)
+    return json(caseView(env, saved, false), 201)
+  }
+  return json({ ok: false, code: 'amount', error: 'Could not reserve a unique amount. Try again.' }, 503)
+}
+
+async function readCase(env: Env, caseId: string): Promise<Response> {
+  const row = await getCase(env.DB, caseId)
+  if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
+  return json(caseView(env, row, false), 200)
+}
+
+async function confirmCase(request: Request, env: Env, caseId: string): Promise<Response> {
+  const row = await getCase(env.DB, caseId)
+  if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
+  if (row.status === 'paid') return json(caseView(env, row, false), 200)
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
+  }
+  const txHash = body && typeof body === 'object' ? (body as { txHash?: unknown }).txHash : undefined
+  if (typeof txHash !== 'string') return json({ ok: false, code: 'tx', error: 'Send the transfer hash as txHash.' }, 400)
+  const chain = row.chain && isPaymentChain(row.chain) ? row.chain : null
+  const recipient = env.THAW_USDC_ADDRESS?.trim() ?? ''
+  if (!chain || !row.amount_atomic || !/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+    return json({ ok: false, code: 'payment_not_configured', error: 'Payment is not configured.' }, 503)
+  }
+  const checked = await verifyUsdcTransfer(paymentRpc(chain, env.ALCHEMY_API_KEY, fetch, chain === 'base' ? env.THAW_RPC_URL_BASE : env.THAW_RPC_URL_ARBITRUM), {
+    chain,
+    txHash,
+    recipient,
+    amountAtomic: BigInt(row.amount_atomic),
+    minConfirmations: confirmationsOf(env),
+  })
+  if (!checked.ok) return json({ ok: false, code: checked.reason, error: 'That transfer does not match this case.' }, 402)
+  const stored = await consumeCasePayment(env.DB, { chain, txHash, orderId: row.order_id, caseId: row.id })
+  if (!stored) return json({ ok: false, code: 'reused', error: 'That transfer was already used.' }, 409)
+  const paid = await getCase(env.DB, row.id)
+  if (!paid) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
+  return json(caseView(env, paid, false), 200)
+}
+
+function caseView(env: Env, row: CaseRow, existing: boolean): Record<string, unknown> {
+  const chain = row.chain && isPaymentChain(row.chain) ? row.chain : null
+  return {
+    ok: true,
+    caseId: row.id,
+    orderId: row.order_id,
+    tier: row.tier,
+    status: row.status,
+    paid: row.status === 'paid',
+    existing,
+    priceMicro: row.price_micro,
+    feeCreditMicro: row.fee_credit_micro,
+    netMicro: row.net_micro,
+    priceUsd: (row.price_micro / 1_000_000).toFixed(2),
+    feeUsd: (row.fee_credit_micro / 1_000_000).toFixed(2),
+    netUsd: (row.net_micro / 1_000_000).toFixed(2),
+    chain,
+    token: chain ? USDC_CONTRACT[chain] : null,
+    recipient: env.THAW_USDC_ADDRESS?.trim() ?? '',
+    amountAtomic: row.amount_atomic,
+    amountUsd: row.amount_atomic ? (Number(row.amount_atomic) / 1_000_000).toFixed(6) : null,
+  }
 }
 
 export default {

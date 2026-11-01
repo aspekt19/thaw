@@ -7,5 +7,6 @@ packages/guard/dist/
 .vercel
 .wrangler
 .dev.vars
+.taste-skill/
 *.log
 .DS_Store

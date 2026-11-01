@@ -1,103 +1,277 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Thaw — проверка шанса</title>
+    <title>Thaw. Papers for a frozen withdrawal</title>
+    <meta name="description" content="Thaw prepares source-of-funds papers after an exchange freezes a withdrawal. A paid chance check starts at $1 in USDC and is credited toward the file.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/src/web/style.css">
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="/">Thaw</a>
-      <p>Подготовка документов, если биржа заморозила вывод.</p>
+    <header class="bar">
+      <a class="brand" href="#top">Thaw</a>
+      <nav>
+        <a href="#prices">Prices</a>
+        <a href="#questions">Questions</a>
+        <a class="nav-go" href="#check">Check the chance</a>
+      </nav>
     </header>
-    <main>
-      <h1>Проверить шанс</h1>
-      <p class="lead">
-        Проверка платная: вы переводите USDC напрямую на наш кошелёк, без посредника и без кастоди.
-        Сумму и адрес показывает сервер. Эта оплата зачтётся в цену дела, если вы откроете дело по тому же заказу.
-        Это не юридическая помощь и не обещание разморозки. Санкционные случаи не берём.
-        Приватные ключи и сид-фразы не присылайте.
-      </p>
-      <form id="check-form" action="/api/check-orders" method="post">
-        <div class="field">
-          <label for="exchange">Биржа</label>
-          <select id="exchange" name="exchange" required>
-            <option value="binance">Binance</option>
-            <option value="coinbase">Coinbase</option>
-            <option value="bybit">Bybit</option>
-            <option value="okx">OKX</option>
-            <option value="kucoin">KuCoin</option>
-            <option value="kraken">Kraken</option>
-            <option value="crypto_com">Crypto.com</option>
-            <option value="other">Другая</option>
-          </select>
+
+    <div data-view="home" id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>
+            <span class="mask"><span class="line">Your withdrawal</span></span>
+            <span class="mask"><span class="line late">is frozen.</span></span>
+          </h1>
+          <p class="support" data-rise>Thaw writes the source-of-funds papers an exchange asks for after an AML freeze. The exchange decides. We do not.</p>
+          <a class="action" href="#check" data-rise>Check the chance</a>
         </div>
-        <div class="field">
-          <label for="notice">Текст уведомления</label>
-          <textarea id="notice" name="notice" required maxlength="8000" rows="6"></textarea>
-          <p id="notice-help" class="hint">Вставьте текст как есть, без ключей и сид-фраз.</p>
-        </div>
-        <div class="split">
-          <div class="field">
-            <label for="amount">Сумма</label>
-            <input id="amount" name="amount" required inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="amount-help">
-            <p id="amount-help" class="hint">Например 1200</p>
-          </div>
-          <div class="field">
-            <label for="asset">Актив</label>
-            <input id="asset" name="asset" required maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" value="USDT">
+        <div class="hero-stage">
+          <div class="fragment" data-ui data-rise id="remainder">
+            <p class="frag-title">Remainder after the $1 check</p>
+            <div class="tier-row" role="group" aria-label="File price">
+              <button type="button" class="tier on" data-tier="light">Light file, $49</button>
+              <button type="button" class="tier" data-tier="full">Full file, $79</button>
+            </div>
+            <p class="frag-figure" id="remainder-figure">$48.00</p>
+            <p class="frag-line" id="remainder-line">$49 file, minus the $1 check. A live invoice adds under $0.10 so two open invoices never match.</p>
+            <dl class="frag-facts">
+              <div><dt>Network</dt><dd>Base</dd></div>
+              <div><dt>Token</dt><dd>USDC</dd></div>
+              <div><dt>Contract</dt><dd>0x833589fcd6edb6e08f4c7c32d4f71b54bda02913</dd></div>
+            </dl>
+            <p class="frag-note">The wallet address is on your invoice. We never ask for a private key or a seed phrase.</p>
           </div>
         </div>
-        <div class="field">
-          <label for="chain">Сеть</label>
-          <select id="chain" name="chain" required>
-            <option value="tron">TRON</option>
-            <option value="ethereum">Ethereum</option>
-            <option value="arbitrum">Arbitrum</option>
-          </select>
-          <p class="hint">Первый шаг депозита смотрим в TRON, Ethereum и Arbitrum.</p>
+      </section>
+
+      <section class="how" id="how">
+        <div class="how-grid">
+          <figure class="shot" data-rise>
+            <img src="/pictures/patterson-s-general-store-ledger.jpg" width="1400" height="2053" alt="Handwritten 1910 ledger page from Patterson's General Store, with item lines and a closing balance.">
+            <figcaption>A store ledger, Patterson's General Store, 1910. Public domain, Wikimedia Commons.</figcaption>
+          </figure>
+          <div class="how-copy">
+            <h2 data-rise>How a check works</h2>
+            <p data-rise><strong>To begin,</strong> you paste the exchange notice, the amount, the date, and the deposit address or transaction id. TRON, Ethereum, and Arbitrum only.</p>
+            <p data-rise><strong>Then you pay</strong> at least $1 in USDC, straight to our wallet on Base. The invoice amount is unique. A round dollar will not match.</p>
+            <p data-rise><strong>After the chain confirms it,</strong> rules read the notice and the public transfer. You get a chance level, the reasons, and what would raise the chance. That $1 is credited if you open a file on the same check.</p>
+            <p data-rise><strong>We decline</strong> sanctions, a police or court hold, theft, and a final closure. This is document preparation, not legal advice, and not a promise the withdrawal will be released.</p>
+            <div class="fragment slim" data-ui data-rise>
+              <p class="frag-title">What the invoice shows</p>
+              <p class="frag-figure" id="sample-figure">48.000000 USDC</p>
+              <p class="frag-line">Status: waiting for that exact transfer.</p>
+              <p class="frag-note">Your invoice will not end in zeros. The extra fraction is how we tell one payment from another.</p>
+            </div>
+          </div>
         </div>
-        <div class="field">
-          <label for="deposit">Адрес отправителя или txid депозита</label>
-          <input id="deposit" name="deposit" required autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </section>
+
+      <section class="prices" id="prices">
+        <h2 data-rise>What you pay</h2>
+        <div class="plan-row">
+          <article data-rise>
+            <h3>Chance check</h3>
+            <p class="sum">$1</p>
+            <p>USDC on Base, before the check runs. Credited toward a file on the same check. The live invoice is this price plus a unique fraction under $0.10.</p>
+            <a class="action" href="#check">Check the chance</a>
+          </article>
+          <article class="tint" data-rise>
+            <h3>Light file</h3>
+            <p class="sum">$49</p>
+            <p>Opens only after a high or medium chance. You pay $49 minus the check you already paid. Same USDC invoice, checked on chain.</p>
+            <button type="button" class="action ghost" data-pick="light">See the $48 remainder</button>
+          </article>
+          <article data-rise>
+            <h3>Full file</h3>
+            <p class="sum">$79</p>
+            <p>Same rule, higher price. You pay $79 minus the check. We do not publish a difference in the papers beyond the price.</p>
+            <button type="button" class="action ghost" data-pick="full">See the $78 remainder</button>
+          </article>
         </div>
-        <div class="field">
-          <label for="date">Дата депозита</label>
-          <input id="date" name="date" type="date" required>
+      </section>
+
+      <section class="band">
+        <figure class="shot wide" data-rise>
+          <div class="drift-frame">
+            <img class="drift" src="/pictures/patterson-s-general-store-ledger-2.jpg" width="1400" height="2053" alt="Handwritten ledger page headed Prof L R Wilson, with daily purchases and a balance.">
+          </div>
+          <figcaption>Another page of the same 1910 store ledger, headed Prof L R Wilson.</figcaption>
+        </figure>
+      </section>
+
+      <section class="questions" id="questions">
+        <h2 data-rise>Questions</h2>
+        <div class="ask">
+          <details name="faq" data-rise>
+            <summary>What do you actually prepare? <span class="plus" aria-hidden="true"></span></summary>
+            <p>A source-of-funds file for a regular user whose exchange froze an account or a withdrawal after an AML check. The exchange still makes the decision.</p>
+          </details>
+          <details name="faq" data-rise>
+            <summary>Will this release the withdrawal? <span class="plus" aria-hidden="true"></span></summary>
+            <p>No. We do not promise that. Anyone who sells a guaranteed release is not us.</p>
+          </details>
+          <details name="faq" data-rise>
+            <summary>What does the dollar buy? <span class="plus" aria-hidden="true"></span></summary>
+            <p>A chance level from the notice and the public chain data, plus the reasons. The fee is credited if you later open a light or full file on that same check.</p>
+          </details>
+          <details name="faq" data-rise>
+            <summary>Which cases do you refuse? <span class="plus" aria-hidden="true"></span></summary>
+            <p>Sanctions, a police or court hold, theft, and a notice that the account is finally closed. A low chance also does not open a file.</p>
+          </details>
+          <details name="faq" data-rise>
+            <summary>Do you want my keys? <span class="plus" aria-hidden="true"></span></summary>
+            <p>No. Never send a private key or a seed phrase. Payment is a normal USDC transfer from your own wallet to the address on the invoice.</p>
+          </details>
+          <details name="faq" data-rise>
+            <summary>Is this legal advice? <span class="plus" aria-hidden="true"></span></summary>
+            <p>No. It is document preparation. A police or court hold needs a lawyer. Our papers do not replace one.</p>
+          </details>
         </div>
-        <div class="field">
-          <label for="origin">Откуда средства</label>
-          <select id="origin" name="origin" required>
-            <option value="exchange_purchase">Покупка на другой бирже</option>
-            <option value="p2p">P2P</option>
-            <option value="otc">OTC</option>
-            <option value="salary">Зарплата в крипте</option>
-            <option value="mining_staking">Майнинг или стейкинг</option>
-            <option value="defi_airdrop">DeFi или airdrop</option>
-            <option value="goods_services">Оплата товаров и услуг</option>
-            <option value="transfer_person">Перевод от другого человека</option>
-            <option value="unknown">Не знаю</option>
-          </select>
+      </section>
+
+      <section class="book">
+        <h2 data-rise>The file is paper, not a ruling</h2>
+        <figure class="shot" data-rise>
+          <img src="/pictures/account-book-cover.jpg" width="1200" height="1600" alt="Marbled paper cover of an account book, with a handwritten title on the front.">
+          <figcaption>Account book cover by John Carlin, 1835–56. Public domain, The Metropolitan Museum of Art.</figcaption>
+        </figure>
+        <div data-rise>
+          <p>You keep your wallet. We receive one USDC transfer for the check, and a second for the remainder if you open a file. Both are verified on Base. Neither one gives us your keys.</p>
+          <p><a href="#terms">Draft terms</a> and <a href="#privacy">draft privacy</a> are placeholders, marked as drafts.</p>
         </div>
-        <div class="field">
-          <label for="hasDocuments">Есть документы</label>
-          <select id="hasDocuments" name="hasDocuments">
-            <option value="">Не указано</option>
-            <option value="yes">Да</option>
-            <option value="no">Нет</option>
-          </select>
+      </section>
+
+      <footer class="colophon">
+        <p class="credits">Pictures: <a href="https://commons.wikimedia.org/wiki/File:Patterson%27s_General_Store_Ledger_-_DPLA_-_0079e562a497df98da2b2bf6a5740d22_(page_703).jpg">Patterson's General Store Ledger</a>, public domain, via Wikimedia Commons; <a href="https://commons.wikimedia.org/wiki/File:Patterson%27s_General_Store_Ledger_-_DPLA_-_0079e562a497df98da2b2bf6a5740d22_(page_752).jpg">a second page of the same ledger</a>, public domain, via Wikimedia Commons; <a href="https://www.metmuseum.org/art/collection/search/20365">Account Book Ledger</a> by John Carlin, 1835–56, <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>, via The Metropolitan Museum of Art.</p>
+        <div class="foot-line">
+          <p>Document preparation</p>
+          <p class="foot-links"><a href="#check">Check</a> <a href="#prices">Prices</a> <a href="#questions">Questions</a> <a href="#terms">Terms</a> <a href="#privacy">Privacy</a></p>
+          <p>2026</p>
         </div>
-        <div class="field check">
-          <input id="priorRefusal" name="priorRefusal" type="checkbox" value="yes">
-          <label for="priorRefusal">Уже был отказ по апелляции</label>
-        </div>
-        <input id="captchaToken" name="captchaToken" type="hidden" value="">
-        <input id="clientId" name="clientId" type="hidden" value="">
-        <button id="submit" type="submit">Получить счёт</button>
-      </form>
-      <section id="result" aria-live="polite"></section>
-    </main>
+      </footer>
+    </div>
+
+    <div data-view="check" hidden>
+      <section class="sheet-page">
+        <h1>The chance check</h1>
+        <p class="support">From $1 in USDC on Base, credited toward a $49 or $79 file on this same check. Paste the notice as you received it. Leave out keys and seed phrases.</p>
+        <form id="check-form" action="/api/check-orders" method="post">
+          <div class="field">
+            <label for="exchange">Exchange</label>
+            <select id="exchange" name="exchange" required>
+              <option value="binance">Binance</option>
+              <option value="coinbase">Coinbase</option>
+              <option value="bybit">Bybit</option>
+              <option value="okx">OKX</option>
+              <option value="kucoin">KuCoin</option>
+              <option value="kraken">Kraken</option>
+              <option value="crypto_com">Crypto.com</option>
+              <option value="other">Another exchange</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="notice">Notice text</label>
+            <textarea id="notice" name="notice" required maxlength="8000" rows="6"></textarea>
+          </div>
+          <div class="pair">
+            <div class="field">
+              <label for="amount">Amount</label>
+              <input id="amount" name="amount" required inputmode="decimal" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="asset">Asset</label>
+              <input id="asset" name="asset" required maxlength="12" value="USDT" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="field">
+            <label for="chain">Network of the deposit</label>
+            <select id="chain" name="chain" required>
+              <option value="tron">TRON</option>
+              <option value="ethereum">Ethereum</option>
+              <option value="arbitrum">Arbitrum</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="deposit">Sender address or deposit transaction id</label>
+            <input id="deposit" name="deposit" required autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="date">Deposit date</label>
+            <input id="date" name="date" type="date" required>
+          </div>
+          <div class="field">
+            <label for="origin">Where the funds came from</label>
+            <select id="origin" name="origin" required>
+              <option value="exchange_purchase">Bought on another exchange</option>
+              <option value="p2p">P2P</option>
+              <option value="otc">OTC</option>
+              <option value="salary">Salary paid in crypto</option>
+              <option value="mining_staking">Mining or staking</option>
+              <option value="defi_airdrop">DeFi or an airdrop</option>
+              <option value="goods_services">Goods or services</option>
+              <option value="transfer_person">A transfer from a person</option>
+              <option value="unknown">I do not know</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="hasDocuments">Do you have records of that origin?</label>
+            <select id="hasDocuments" name="hasDocuments">
+              <option value="">Not stated</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="field check">
+            <input id="priorRefusal" name="priorRefusal" type="checkbox" value="yes">
+            <label for="priorRefusal">An appeal was already refused</label>
+          </div>
+          <input id="captchaToken" name="captchaToken" type="hidden" value="">
+          <input id="clientId" name="clientId" type="hidden" value="">
+          <button class="action" id="submit" type="submit">Get the invoice</button>
+          <p id="form-error" class="warn" role="alert"></p>
+        </form>
+      </section>
+    </div>
+
+    <div data-view="invoice" hidden>
+      <section class="sheet-page" id="invoice-root" aria-live="polite"></section>
+    </div>
+
+    <div data-view="result" hidden>
+      <section class="sheet-page" id="result-root" aria-live="polite"></section>
+    </div>
+
+    <div data-view="case" hidden>
+      <section class="sheet-page" id="case-root" aria-live="polite"></section>
+    </div>
+
+    <div data-view="terms" hidden>
+      <section class="sheet-page prose">
+        <h1>Draft terms</h1>
+        <p>This page is a draft placeholder. It is not a finished contract.</p>
+        <p>Thaw prepares documents. It is not a law firm and not legal advice. We do not promise that an exchange will release a withdrawal or reopen an account.</p>
+        <p>The chance check is a paid read of your notice and of public chain data. The published minimum is $1, paid in USDC to the address on your invoice. That fee is credited toward a light file at $49 or a full file at $79 on the same check. The remainder is a second USDC transfer. A case is paid only after we verify that transfer.</p>
+        <p>We decline sanctions cases, police or court holds, theft, and final closures. A low chance does not open a file.</p>
+        <p>You pay from your own wallet. We never ask for a private key or a seed phrase.</p>
+      </section>
+    </div>
+
+    <div data-view="privacy" hidden>
+      <section class="sheet-page prose">
+        <h1>Draft privacy</h1>
+        <p>This page is a draft placeholder. It is not a finished privacy notice.</p>
+        <p>The check form collects the exchange, the notice text, an amount, an asset, a network, a deposit address or transaction id, a date, and where you say the funds came from. We store that with the invoice so we can run the check after payment and credit the fee.</p>
+        <p>Do not put a private key or a seed phrase in the notice. We reject fields that ask us to take one.</p>
+        <p>Payment is a public USDC transfer on Base. The transaction hash is stored so the same transfer cannot be reused.</p>
+        <p>A fuller notice has to name the operator, the retention period, and who can ask for a copy. Those are not settled in this draft.</p>
+      </section>
+    </div>
+
     <script type="module" src="/src/web/main.ts"></script>
   </body>
 </html>
