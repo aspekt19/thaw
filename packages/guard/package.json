@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Small internal piece for Thaw. SERV client and abuse helpers adapted from the published allowlatch package 0.2.2. The private AllowLatch commit f33257d was not readable from this environment.",
+  "dependencies": {
+    "zod": "^3.25.67"
+  },
+  "description": "Internal guard for Thaw, taken from AllowLatch commit f33257df64e1600c61185ab1a2835e3b9e58f536. OpenServ graph calls are not included.",
   "exports": {
     ".": "./src/index.ts"
   }

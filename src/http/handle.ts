@@ -25,6 +25,7 @@ export function defaultDeps(): ChanceDeps {
     burst: (key) => checkRateLimit(key),
     etherscanApiKey: process.env.ETHERSCAN_API_KEY,
     trongridApiKey: process.env.TRONGRID_API_KEY,
+    receiptSecret: process.env.THAW_RECEIPT_SECRET?.trim() || undefined,
   }
   return shared
 }
