@@ -259,12 +259,12 @@ export const REASON_LINE: Record<RuleId, string> = {
 
 export const REFUSAL_LINE: Record<RefusalReason, string> = {
   NOT_ELIGIBLE: 'We will not prepare papers for this notice.',
-  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents or citizens, so we can't open a case for you. This is not legal advice.",
+  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents, so we can't open a case for you. This is not legal advice.",
 }
 
 export const TRAVEL_RULE_VERIFY_NOTE = 'We first verify that the hold is really caused by the Travel Rule. Until that check is done, the file follows the ordinary rules.'
 
-export const NEED_COUNTRY_NOTE = 'Tell us your country of residence, and any other citizenship, before we can open a file on an HTX-related case.'
+export const NEED_COUNTRY_NOTE = 'Tell us your country of residence before we can open a file on an HTX-related case.'
 
 export const MISSING_LINE: Record<RuleId, string> = {
   PRIOR_REJECTION: "a document check against the exchange's request, a second round, or a formal complaint draft",

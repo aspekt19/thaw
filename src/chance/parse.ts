@@ -98,8 +98,6 @@ export function parseChanceInput(body: unknown): ParseResult {
   const holdType = readEnum(row.holdType, HOLDS) ?? undefined
   const clientCountry = readCountry(row.clientCountry)
   if (clientCountry === 'bad') return { ok: false, error: 'Country of residence should be a two-letter code.' }
-  const nationalities = readCountries(row.clientNationalities)
-  if (nationalities === 'bad') return { ok: false, error: 'Citizenships should be two-letter codes.' }
   // The client cannot confirm a Travel Rule cause. That flag is set only after our own check.
   return {
     ok: true,
@@ -121,7 +119,7 @@ export function parseChanceInput(body: unknown): ParseResult {
       disputedDepositsCount,
       holdType,
       clientCountry,
-      clientNationalities: nationalities,
+      clientNationalities: [],
       htxLinked: row.htxLinked === true || row.htxLinked === 'yes',
       clientId,
       captchaToken,
@@ -171,20 +169,6 @@ function readCountry(value: unknown): string | undefined | 'bad' {
   const code = value.trim().toUpperCase()
   if (!/^[A-Z]{2}$/.test(code)) return 'bad'
   return code
-}
-
-function readCountries(value: unknown): string[] | 'bad' {
-  if (value === undefined || value === null || value === '') return []
-  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,]+/) : null
-  if (!raw) return 'bad'
-  const out: string[] = []
-  for (const item of raw) {
-    if (typeof item === 'string' && item.trim() === '') continue
-    const code = readCountry(item)
-    if (code === 'bad') return 'bad'
-    if (code && !out.includes(code)) out.push(code)
-  }
-  return out
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {

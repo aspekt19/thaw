@@ -61,7 +61,7 @@ const PAY_ERROR: Record<string, string> = {
   LIGHT_NOT_ALLOWED: LIGHT_BLOCKED_NOTE,
   NO_CASE: 'We do not open a file for this notice.',
   blocked_need_country: NEED_COUNTRY_NOTE,
-  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents or citizens, so we can't open a case for you. This is not legal advice.",
+  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents, so we can't open a case for you. This is not legal advice.",
   tier: 'This check already has a file on the other price.',
   input: 'Check the form. Something required is missing or not in the right shape.',
   json: 'The server could not read that request.',
@@ -193,19 +193,17 @@ const COUNTRIES: Array<[string, string]> = [
 ]
 
 function fillCountries(): void {
-  for (const id of ['clientCountry', 'clientNationality']) {
-    const select = document.querySelector<HTMLSelectElement>(`#${id}`)
-    if (!select || select.options.length > 1) continue
-    const blank = document.createElement('option')
-    blank.value = ''
-    blank.textContent = id === 'clientCountry' ? 'Select a country' : 'Same as residence'
-    select.append(blank)
-    for (const [code, name] of COUNTRIES) {
-      const option = document.createElement('option')
-      option.value = code
-      option.textContent = name
-      select.append(option)
-    }
+  const select = document.querySelector<HTMLSelectElement>('#clientCountry')
+  if (!select || select.options.length > 1) return
+  const blank = document.createElement('option')
+  blank.value = ''
+  blank.textContent = 'Select a country'
+  select.append(blank)
+  for (const [code, name] of COUNTRIES) {
+    const option = document.createElement('option')
+    option.value = code
+    option.textContent = name
+    select.append(option)
   }
 }
 
@@ -313,7 +311,7 @@ function payload(form: HTMLFormElement): Record<string, unknown> {
   const lists = new Map<string, string[]>()
   data.forEach((value, key) => {
     if (typeof value !== 'string' || value === '') return
-    if (key === 'fundsSources' || key === 'evidence' || key === 'clientNationalities') {
+    if (key === 'fundsSources' || key === 'evidence') {
       const list = lists.get(key) ?? []
       list.push(value)
       lists.set(key, list)
@@ -325,10 +323,7 @@ function payload(form: HTMLFormElement): Record<string, unknown> {
   for (const [key, list] of lists) out[key] = list
   if (!out.fundsSources) out.fundsSources = []
   if (!out.evidence) out.evidence = []
-  const extra = typeof out.clientNationalitiesMore === 'string' ? out.clientNationalitiesMore.split(/[\s,]+/).filter(Boolean) : []
-  const citizenships = Array.isArray(out.clientNationalities) ? out.clientNationalities.map(String) : []
-  out.clientNationalities = [...citizenships, ...extra]
-  delete out.clientNationalitiesMore
+  out.clientNationalities = []
   if (!out.clientCountry) delete out.clientCountry
   if (!out.priorExchangeRejection) out.priorExchangeRejection = false
   if (!out.htxLinked) out.htxLinked = false
