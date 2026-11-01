@@ -12,6 +12,8 @@ export const REASON = {
   banOff: 'Платные проверки адресов выключены, поэтому высокий шанс не ставим.',
   banUnpaid: 'Проверку адреса не оплатили, результата нет, поэтому высокий шанс не ставим.',
   banUnknown: 'Проверка адреса не дала ответа, поэтому высокий шанс не ставим.',
+  banBase:
+    'USDTBanList не вызываем для Base: в документированном запросе нет поля сети, и страница не говорит, что список покрывает Base. Высокий шанс из-за этого не ставим.',
   lookupFail: 'Депозит в блокчейне сверить не удалось.',
   hopFail: 'Первый хоп прочитать не удалось.',
   amountMismatch: 'Сумма не совпала с переводом в блокчейне.',
@@ -51,7 +53,7 @@ const STOP_REASON: Record<(typeof STOP_CATEGORIES)[number], string> = {
   final_closure: REASON.closure,
 }
 
-export type BanState = 'clean' | 'banned' | 'disabled' | 'unpaid' | 'unavailable' | 'not_checked'
+export type BanState = 'clean' | 'banned' | 'disabled' | 'unpaid' | 'unavailable' | 'not_checked' | 'unsupported'
 
 export type Match = 'match' | 'mismatch' | 'unknown'
 
@@ -133,6 +135,7 @@ export function decide(facts: RuleFacts): RuleDecision {
   if (!ordinary) blocksHigh.push(REASON.vague)
   if (facts.ban === 'disabled') blocksHigh.push(REASON.banOff)
   else if (facts.ban === 'unpaid') blocksHigh.push(REASON.banUnpaid)
+  else if (facts.ban === 'unsupported') blocksHigh.push(REASON.banBase)
   else if (facts.ban !== 'clean') blocksHigh.push(REASON.banUnknown)
   if (!facts.lookupOk) blocksHigh.push(REASON.lookupFail)
   if (!facts.firstHopOk) blocksHigh.push(REASON.hopFail)
@@ -143,7 +146,7 @@ export function decide(facts: RuleFacts): RuleDecision {
 
   const raise: string[] = [...DOCUMENT_RAISE]
   if (facts.amountMatch === 'mismatch' || facts.dateMatch === 'mismatch') raise.push(RAISE.explainGap)
-  if (facts.ban === 'disabled' || facts.ban === 'unpaid' || facts.ban === 'unavailable') raise.push(RAISE.ban)
+  if (facts.ban === 'disabled' || facts.ban === 'unpaid' || facts.ban === 'unavailable' || facts.ban === 'unsupported') raise.push(RAISE.ban)
 
   if (low.length > 0) {
     return {

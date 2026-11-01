@@ -42,7 +42,7 @@ export function parseChanceInput(body: unknown): ParseResult {
     return { ok: false, error: 'Укажите актив буквами, например USDT.' }
   }
   const chain = readEnum(row.chain, CHAINS)
-  if (!chain) return { ok: false, error: 'Сеть: tron, ethereum или arbitrum.' }
+  if (!chain) return { ok: false, error: 'Сеть: tron, ethereum, arbitrum или base.' }
   if (typeof row.deposit !== 'string' || !classifyDeposit(chain, row.deposit)) {
     return { ok: false, error: 'Депозит должен быть адресом или txid этой сети.' }
   }

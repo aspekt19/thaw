@@ -11,6 +11,7 @@ import {
   type ServSignal,
 } from '@thaw/guard'
 import type { RpcCall } from '../chain/evm-rpc.ts'
+import { classifyDeposit, explorerUrl } from './address.ts'
 import { formatUsd, type Category, type Verdict } from './constants.ts'
 import { categoriesInNotice } from './lexicon.ts'
 import { screenAddresses, type BanList } from './banlist.ts'
@@ -87,6 +88,8 @@ export type PublicResult = {
   signature: string | null
   injection: 'not_called' | 'allow' | 'deny' | 'unavailable'
   disclaimer: string
+  /** Public explorer page for the deposit the person entered. Base uses basescan.org. */
+  depositExplorer: string | null
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
 
@@ -166,7 +169,8 @@ export async function runChanceCheck(
       dateMatch: 'unknown',
     }
   }
-  const addresses = banAddresses(lookup)
+  const baseDeposit = input.chain === 'base'
+  const addresses = baseDeposit ? [] : banAddresses(lookup)
   const bill = deps.banlist.billedMicroPerAddress * addresses.length
   if (!(await deps.store.reserveSpend(day, bill, deps.limits.spendCapMicro))) {
     await deps.store.giveBackSlot(slotKey)
@@ -180,7 +184,8 @@ export async function runChanceCheck(
   }
 
   let ban: BanState = 'disabled'
-  if (!deps.banlist.enabled) ban = 'disabled'
+  if (baseDeposit) ban = 'unsupported'
+  else if (!deps.banlist.enabled) ban = 'disabled'
   else if (addresses.length === 0) ban = 'not_checked'
   else {
     try {
@@ -249,10 +254,17 @@ export async function runChanceCheck(
     signature: deps.receiptSecret ? signEd25519(signed, deps.receiptSecret) : null,
     injection,
     disclaimer: DISCLAIMER,
+    depositExplorer: depositLink(input.chain, input.deposit),
     paidPath: paidPathView(deps),
   }
   await deps.store.writeCache(key, result, now, deps.limits.cacheTtlMs)
   return result
+}
+
+function depositLink(chain: ChanceInput['chain'], deposit: string): string | null {
+  const kind = classifyDeposit(chain, deposit)
+  if (!kind) return null
+  return explorerUrl(chain, kind, deposit)
 }
 
 function banAddresses(lookup: HopLookup): string[] {

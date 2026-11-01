@@ -495,4 +495,50 @@ describe('evm lookup url', () => {
     assert.ok(urls.some((url) => url.includes('api.etherscan.io/v2/api') && url.includes('chainid=42161')))
     assert.ok(urls.some((url) => url.includes('module=proxy') && url.includes('eth_getTransactionReceipt')))
   })
+
+  it('reads a Base deposit from RPC, links basescan, and does not call the USDT list', async () => {
+    const tx = `0x${'cd'.repeat(32)}`
+    const calls: string[] = []
+    let banCalls = 0
+    const result = await ok(
+      await runChanceCheck(
+        input({ chain: 'base', deposit: tx, amount: '1200', date: '2026-11-01' }),
+        '203.0.113.40',
+        deps({
+          evmCall: async (method) => {
+            calls.push(method)
+            if (method === 'eth_getTransactionReceipt') {
+              return {
+                blockNumber: '0x10',
+                transactionHash: tx,
+                logs: [
+                  {
+                    address: `0x${'33'.repeat(20)}`,
+                    topics: [TRANSFER_TOPIC, `0x${'0'.repeat(24)}${'11'.repeat(20)}`, `0x${'0'.repeat(24)}${'22'.repeat(20)}`],
+                    data: `0x${(1200000000n).toString(16).padStart(64, '0')}`,
+                  },
+                ],
+              }
+            }
+            if (method === 'eth_getBlockByNumber') return { timestamp: `0x${Math.floor(DAY / 1000).toString(16)}` }
+            throw new Error(method)
+          },
+          banlist: ban({
+            enabled: true,
+            billedMicroPerAddress: 1_000,
+            check: async () => {
+              banCalls += 1
+              return { status: 'ok', isBanned: true }
+            },
+          }),
+        }),
+      ),
+    )
+    assert.deepEqual(calls, ['eth_getTransactionReceipt', 'eth_getBlockByNumber'])
+    assert.equal(banCalls, 0)
+    assert.equal(result.banlist, 'unsupported')
+    assert.ok(result.reasons.includes(REASON.banBase))
+    assert.equal(result.depositExplorer, `https://basescan.org/tx/${tx}`)
+    assert.equal(result.verdict, 'medium')
+  })
 })

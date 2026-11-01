@@ -24,7 +24,7 @@ export const EXCHANGES = [
   'other',
 ] as const
 
-export const CHAINS = ['tron', 'ethereum', 'arbitrum'] as const
+export const CHAINS = ['tron', 'ethereum', 'arbitrum', 'base'] as const
 
 export const ORIGINS = [
   'exchange_purchase',
@@ -63,9 +63,11 @@ export const ORDINARY_CATEGORIES = [
   'risk_control',
 ] as const
 
-export const EVM_CHAIN_IDS: Record<'ethereum' | 'arbitrum', string> = {
+/** Chain ids already used for payment (Base 8453) and for the Etherscan v2 `chainid` query. */
+export const EVM_CHAIN_IDS: Record<'ethereum' | 'arbitrum' | 'base', string> = {
   ethereum: '1',
   arbitrum: '42161',
+  base: '8453',
 }
 
 export const TRANSFER_TOPIC =

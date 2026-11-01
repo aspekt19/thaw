@@ -271,8 +271,9 @@ export async function lookupFirstHop(
     }
   }
   if (input.chain === 'tron') return lookupTron(input, kind, fetchImpl, keys.trongridApiKey)
-  if (keys.evmCall && (input.chain === 'ethereum' || input.chain === 'arbitrum')) {
-    const viaRpc = await lookupEvmRpc(input, kind, keys.evmCall, keys.alchemyTransfers === true)
+  const evm = evmChain(input.chain)
+  if (evm && keys.evmCall) {
+    const viaRpc = await lookupEvmRpc(input, kind, keys.evmCall, keys.alchemyTransfers === true, evm)
     if (viaRpc.status !== 'unavailable' || !keys.etherscanApiKey) return viaRpc
   }
   if (!keys.etherscanApiKey) {
@@ -361,7 +362,7 @@ async function lookupEvm(
   fetchImpl: FetchLike,
   apiKey: string,
 ): Promise<HopLookup> {
-  const chain = input.chain === 'arbitrum' ? 'arbitrum' : 'ethereum'
+  const chain = evmChain(input.chain) ?? 'ethereum'
   const chainId = EVM_CHAIN_IDS[chain]
   if (kind === 'address') {
     const sender = input.deposit.trim().toLowerCase()
@@ -455,13 +456,18 @@ async function tokenPage(
   return parseEvmTokenPage(response.body)
 }
 
+function evmChain(chain: Chain): 'ethereum' | 'arbitrum' | 'base' | null {
+  if (chain === 'ethereum' || chain === 'arbitrum' || chain === 'base') return chain
+  return null
+}
+
 async function lookupEvmRpc(
   input: { chain: Chain; deposit: string; amount: string; asset: string; date: string },
   kind: 'address' | 'tx',
   call: RpcCall,
   alchemyTransfers: boolean,
+  chain: 'ethereum' | 'arbitrum' | 'base',
 ): Promise<HopLookup> {
-  const chain = input.chain === 'arbitrum' ? 'arbitrum' : 'ethereum'
   if (kind === 'address') {
     if (!alchemyTransfers) {
       return unavailable('This RPC has no transfer index. Set an Alchemy key or pass a transaction id.')

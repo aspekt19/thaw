@@ -88,7 +88,7 @@ function confirmationsOf(env: Env): number {
 }
 
 function depsFor(env: Env, depositChain: RpcChain | null): ChanceDeps {
-  const override = depositChain === 'ethereum' ? env.THAW_RPC_URL_ETHEREUM : depositChain === 'arbitrum' ? env.THAW_RPC_URL_ARBITRUM : undefined
+  const override = depositChain === 'ethereum' ? env.THAW_RPC_URL_ETHEREUM : depositChain === 'arbitrum' ? env.THAW_RPC_URL_ARBITRUM : depositChain === 'base' ? env.THAW_RPC_URL_BASE : undefined
   const urls = depositChain ? rpcUrls(depositChain, { alchemyKey: env.ALCHEMY_API_KEY, overrideUrl: override }) : []
   return {
     now: () => Date.now(),
@@ -237,7 +237,7 @@ async function confirmOrder(request: Request, env: Env, orderId: string): Promis
   })
   if (!checked.ok) return json({ ok: false, code: checked.reason, error: 'Перевод не подошёл к этому заказу.' }, 402)
   const input = JSON.parse(order.input_json) as ChanceInput
-  const depositChain: RpcChain | null = input.chain === 'ethereum' || input.chain === 'arbitrum' ? input.chain : null
+  const depositChain: RpcChain | null = input.chain === 'ethereum' || input.chain === 'arbitrum' || input.chain === 'base' ? input.chain : null
   const ip = order.client_key.split('|')[0] || 'unknown'
   const result = await runChanceCheck(input, ip, depsFor(env, depositChain))
   if (!result.ok) return json(result, result.status)

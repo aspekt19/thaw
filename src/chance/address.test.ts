@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { classifyDeposit, tronHexToBase58 } from './address.ts'
+import { classifyDeposit, explorerUrl, tronHexToBase58 } from './address.ts'
 
 describe('addresses', () => {
   it('encodes the well-known TRON USDT contract', () => {
@@ -13,6 +13,11 @@ describe('addresses', () => {
     assert.equal(classifyDeposit('tron', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'), 'address')
     assert.equal(classifyDeposit('ethereum', `0x${'ab'.repeat(32)}`), 'tx')
     assert.equal(classifyDeposit('ethereum', `0x${'cd'.repeat(20)}`), 'address')
+    assert.equal(classifyDeposit('base', `0x${'cd'.repeat(20)}`), 'address')
+    assert.equal(classifyDeposit('base', `0x${'ab'.repeat(32)}`), 'tx')
     assert.equal(classifyDeposit('tron', '0xabc'), null)
+    const tx = `0x${'ab'.repeat(32)}`
+    assert.equal(explorerUrl('base', 'tx', tx), `https://basescan.org/tx/${tx}`)
+    assert.equal(explorerUrl('base', 'address', `0x${'11'.repeat(20)}`), `https://basescan.org/address/0x${'11'.repeat(20)}`)
   })
 })

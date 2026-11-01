@@ -62,9 +62,9 @@
                 </article>
                 <article class="beat" data-beat="trace">
                   <p class="beat-kicker">Deposit trace</p>
-                  <p class="beat-main mono">0x1111…1111</p>
-                  <ul class="beat-chips"><li>TRON</li><li>One page of history</li><li>Placeholder address</li></ul>
-                  <p class="beat-foot">Public chain data. This address is not a real payer.</p>
+                  <p class="beat-main mono"><a href="https://basescan.org/address/0x1111111111111111111111111111111111111111">0x1111…1111</a></p>
+                  <ul class="beat-chips"><li>Base</li><li>One page of history</li><li>Placeholder address</li></ul>
+                  <p class="beat-foot">Public chain data. The address is a placeholder on basescan.org.</p>
                 </article>
                 <article class="beat" data-beat="rules">
                   <p class="beat-kicker">Rule check</p>
@@ -104,7 +104,7 @@
             </li>
             <li data-rise>
               <strong>Trace the deposit</strong>
-              <span>We read public history on TRON, Ethereum, or Arbitrum. One page, not the whole chain.</span>
+              <span>We read public history on TRON, Ethereum, Arbitrum, or Base. One page, not the whole chain.</span>
             </li>
             <li data-rise>
               <strong>Read the notice</strong>
@@ -241,7 +241,9 @@
               <option value="tron">TRON</option>
               <option value="ethereum">Ethereum</option>
               <option value="arbitrum">Arbitrum</option>
+              <option value="base">Base</option>
             </select>
+            <p class="hint">A Base address or transaction is opened on basescan.org.</p>
           </div>
           <div class="field">
             <label for="deposit">Sender address or deposit transaction id</label>

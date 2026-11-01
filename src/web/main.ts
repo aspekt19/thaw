@@ -17,6 +17,7 @@ const REASON_EN: Record<string, string> = {
   [REASON.banOff]: 'Paid address checks are off, so the rules will not call this a high chance.',
   [REASON.banUnpaid]: 'The address check was not paid, so there is no result and this cannot be a high chance.',
   [REASON.banUnknown]: 'The address check did not answer, so this cannot be a high chance.',
+  [REASON.banBase]: 'The USDT address list does not document Base, so we do not send a Base address there. That keeps this from a high chance.',
   [REASON.lookupFail]: 'The deposit could not be read on chain.',
   [REASON.hopFail]: 'The first hop could not be read.',
   [REASON.amountMismatch]: 'The amount does not match the transfer on chain.',
@@ -97,6 +98,7 @@ type Result = {
   whatWouldRaiseChance?: string[]
   explanation?: string
   disclaimer?: string
+  depositExplorer?: string | null
 }
 
 type CaseInvoice = {
@@ -330,6 +332,16 @@ async function paintResult(): Promise<void> {
   if (raises.length) {
     root.append(subhead('What would raise the chance'))
     root.append(list(raises))
+  }
+  if (result.depositExplorer) {
+    const explorer = document.createElement('p')
+    const anchor = document.createElement('a')
+    anchor.href = result.depositExplorer
+    anchor.target = '_blank'
+    anchor.rel = 'noreferrer'
+    anchor.textContent = 'Open this deposit on the explorer'
+    explorer.append(anchor)
+    root.append(explorer)
   }
   root.append(subhead('Next step'))
   root.append(paragraph(nextStep(result.verdict)))

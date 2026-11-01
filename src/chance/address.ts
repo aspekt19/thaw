@@ -60,3 +60,15 @@ export function sameAddress(chain: Chain, a: string, b: string): boolean {
   if (chain === 'tron') return a === b
   return a.toLowerCase() === b.toLowerCase()
 }
+
+/**
+ * Public explorers. Base uses basescan.org.
+ * Ethereum, Arbitrum, and TRON use the matching public sites.
+ */
+export function explorerUrl(chain: Chain, kind: DepositKind, value: string): string {
+  const id = value.trim()
+  if (chain === 'base') return kind === 'tx' ? `https://basescan.org/tx/${id}` : `https://basescan.org/address/${id}`
+  if (chain === 'arbitrum') return kind === 'tx' ? `https://arbiscan.io/tx/${id}` : `https://arbiscan.io/address/${id}`
+  if (chain === 'ethereum') return kind === 'tx' ? `https://etherscan.io/tx/${id}` : `https://etherscan.io/address/${id}`
+  return kind === 'tx' ? `https://tronscan.org/#/transaction/${id}` : `https://tronscan.org/#/address/${id}`
+}

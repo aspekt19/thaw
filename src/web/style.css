@@ -325,6 +325,8 @@ details[open] .plus::after { transform: none; }
 .sub { padding: 28px 0 72px; }
 .sheet-page { width: min(980px, calc(100% - 2 * var(--pad))); margin: 0 auto; }
 .support { font-size: 18px; max-width: 62ch; }
+.hint { color: var(--muted); font-size: 15px; margin: 6px 0 0; }
+.beat-main a { color: var(--blue); }
 .panel, .invoice {
   background: var(--paper);
   border-radius: 24px;
