@@ -28,7 +28,8 @@ async function send(): Promise<void> {
       body: JSON.stringify(payload()),
     })
     const body = (await response.json()) as Record<string, unknown>
-    render(result, body)
+    if (body.paymentRequired === true) renderPayment(result, body)
+    else render(result, body)
   } catch {
     const p = document.createElement('p')
     p.className = 'error'
@@ -49,6 +50,55 @@ function payload(): Record<string, unknown> {
   })
   if (!out.priorRefusal) out.priorRefusal = false
   return out
+}
+
+function renderPayment(root: HTMLElement, body: Record<string, unknown>): void {
+  const title = document.createElement('h2')
+  title.textContent = 'Счёт на проверку'
+  const lines = [
+    `Сеть: ${text(body.chain)}`,
+    `Контракт USDC: ${text(body.token)}`,
+    `Получатель: ${text(body.recipient)}`,
+    `Сумма, атомарно: ${text(body.amountAtomic)}`,
+    `Сумма USDC: ${text(body.amountUsd)}`,
+    `Заказ: ${text(body.orderId)}`,
+    text(body.note),
+  ]
+  root.append(title)
+  for (const line of lines) {
+    const p = document.createElement('p')
+    p.textContent = line
+    root.append(p)
+  }
+  const label = document.createElement('label')
+  label.htmlFor = 'tx-hash'
+  label.textContent = 'Хеш перевода'
+  const input = document.createElement('input')
+  input.id = 'tx-hash'
+  input.autocomplete = 'off'
+  input.spellcheck = false
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.textContent = 'Я перевёл'
+  button.addEventListener('click', () => {
+    void confirmPay(text(body.orderId), input.value, root)
+  })
+  root.append(label, input, button)
+}
+
+async function confirmPay(orderId: string, txHash: string, root: HTMLElement): Promise<void> {
+  const response = await fetch(`/api/check-orders/${encodeURIComponent(orderId)}/confirm`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ txHash }),
+  })
+  const body = (await response.json()) as Record<string, unknown>
+  root.replaceChildren()
+  render(root, body)
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }
 
 function render(root: HTMLElement, body: Record<string, unknown>): void {

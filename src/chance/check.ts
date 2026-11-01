@@ -10,22 +10,12 @@ import {
   type ServComplete,
   type ServSignal,
 } from '@thaw/guard'
+import type { RpcCall } from '../chain/evm-rpc.ts'
 import { formatUsd, type Category, type Verdict } from './constants.ts'
 import { categoriesInNotice } from './lexicon.ts'
 import { screenAddresses, type BanList } from './banlist.ts'
 import { lookupFirstHop, type HopLookup } from './lookup.ts'
-import {
-  cacheKey,
-  giveBackSlot,
-  readCache,
-  reserveSpend,
-  takeUserSlot,
-  userKey,
-  utcDay,
-  writeCache,
-  type LimitConfig,
-  type LimitStore,
-} from './limits.ts'
+import { cacheKey, userKey, utcDay, type AsyncLimitStore, type LimitConfig } from './limits.ts'
 import { decide, type BanState } from './rules.ts'
 import type { ChanceInput } from './parse.ts'
 
@@ -65,7 +55,7 @@ export type ChanceDeps = {
   fetch: typeof fetch
   serv: ServHooks | null
   banlist: BanList
-  store: LimitStore
+  store: AsyncLimitStore
   limits: LimitConfig
   captchaRequired: boolean
   verifyCaptcha: (token: string | undefined) => Promise<boolean>
@@ -73,8 +63,10 @@ export type ChanceDeps = {
   paidPathPriceUsd: number
   id: () => string
   burst: (key: string) => { ok: true } | { ok: false; status: number; error: string }
-  etherscanApiKey?: string
+    etherscanApiKey?: string
   trongridApiKey?: string
+  evmCall?: RpcCall
+  alchemyTransfers?: boolean
   /** When set, the decision is signed with the ed25519 scheme from the guard. */
   receiptSecret?: string
 }
@@ -132,11 +124,11 @@ export async function runChanceCheck(
   const now = deps.now()
   const day = utcDay(now)
   const key = cacheKey(input.chain, input.deposit)
-  const cached = readCache<PublicResult>(deps.store, key, now)
+  const cached = await deps.store.readCache<PublicResult>(key, now)
   if (cached) return { ...cached, cached: true }
 
   const slotKey = userKey(ip, input.clientId, day)
-  if (!takeUserSlot(deps.store, slotKey, day, deps.limits.dailyChecks)) {
+  if (!(await deps.store.takeUserSlot(slotKey, day, deps.limits.dailyChecks))) {
     if (!deps.paidPathEnabled) {
       return {
         ok: false,
@@ -160,6 +152,8 @@ export async function runChanceCheck(
     lookup = await lookupFirstHop(input, deps.fetch, {
       etherscanApiKey: deps.etherscanApiKey,
       trongridApiKey: deps.trongridApiKey,
+      evmCall: deps.evmCall,
+      alchemyTransfers: deps.alchemyTransfers,
     })
   } catch {
     lookup = {
@@ -174,8 +168,8 @@ export async function runChanceCheck(
   }
   const addresses = banAddresses(lookup)
   const bill = deps.banlist.billedMicroPerAddress * addresses.length
-  if (!reserveSpend(deps.store, day, bill, deps.limits.spendCapMicro)) {
-    giveBackSlot(deps.store, slotKey)
+  if (!(await deps.store.reserveSpend(day, bill, deps.limits.spendCapMicro))) {
+    await deps.store.giveBackSlot(slotKey)
     return {
       ok: false,
       status: 429,
@@ -257,7 +251,7 @@ export async function runChanceCheck(
     disclaimer: DISCLAIMER,
     paidPath: paidPathView(deps),
   }
-  writeCache(deps.store, key, result, now, deps.limits.cacheTtlMs)
+  await deps.store.writeCache(key, result, now, deps.limits.cacheTtlMs)
   return result
 }
 

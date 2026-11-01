@@ -2,7 +2,7 @@ import { assertJsonBodySize, checkBodySize, checkRateLimit, clientIp, createFetc
 import { liveBanList } from '../chance/banlist.ts'
 import { createServHooks, runChanceCheck, type ChanceDeps } from '../chance/check.ts'
 import { PAID_PATH_PRICE_USD } from '../chance/constants.ts'
-import { defaultLimitConfig, createStore } from '../chance/limits.ts'
+import { asAsyncStore, createStore, defaultLimitConfig } from '../chance/limits.ts'
 import { parseChanceInput } from '../chance/parse.ts'
 import { captchaRequired, verifyCaptchaToken } from '../captcha.ts'
 
@@ -15,7 +15,7 @@ export function defaultDeps(): ChanceDeps {
     fetch,
     serv: process.env.SERV_API_KEY ? createServHooks(createFetchComplete()) : null,
     banlist: liveBanList(),
-    store: createStore(),
+    store: asAsyncStore(createStore()),
     limits: defaultLimitConfig(),
     captchaRequired: captchaRequired(),
     verifyCaptcha: (token) => verifyCaptchaToken(token),

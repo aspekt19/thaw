@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { handleRequest } from './handle.ts'
 import { PAID_PATH_PRICE_USD } from '../chance/constants.ts'
-import { createStore } from '../chance/limits.ts'
+import { asAsyncStore, createStore } from '../chance/limits.ts'
 import type { ChanceDeps } from '../chance/check.ts'
 
 function deps(): ChanceDeps {
@@ -18,7 +18,7 @@ function deps(): ChanceDeps {
         throw new Error('off')
       },
     },
-    store: createStore(),
+    store: asAsyncStore(createStore()),
     limits: { dailyChecks: 3, spendCapMicro: 5_000_000, cacheTtlMs: 1000 },
     captchaRequired: false,
     verifyCaptcha: async () => true,

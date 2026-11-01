@@ -90,3 +90,26 @@ export function reserveSpend(store: LimitStore, day: string, micro: number, capM
   store.spentMicro += micro
   return true
 }
+
+/** Same operations, awaited, so D1 and the in-memory map can both back a check. */
+export type AsyncLimitStore = {
+  readCache<T>(key: string, now: number): Promise<T | null>
+  writeCache<T>(key: string, value: T, now: number, ttlMs: number): Promise<void>
+  takeUserSlot(key: string, day: string, limit: number): Promise<boolean>
+  giveBackSlot(key: string): Promise<void>
+  reserveSpend(day: string, micro: number, capMicro: number): Promise<boolean>
+}
+
+export function asAsyncStore(store: LimitStore): AsyncLimitStore {
+  return {
+    readCache: async (key, now) => readCache(store, key, now),
+    writeCache: async (key, value, now, ttlMs) => {
+      writeCache(store, key, value, now, ttlMs)
+    },
+    takeUserSlot: async (key, day, limit) => takeUserSlot(store, key, day, limit),
+    giveBackSlot: async (key) => {
+      giveBackSlot(store, key)
+    },
+    reserveSpend: async (day, micro, cap) => reserveSpend(store, day, micro, cap),
+  }
+}

@@ -1,0 +1,29 @@
+# Replace database_id after `wrangler d1 create thaw`. Do not put a real account id or a secret here.
+name = "thaw"
+main = "src/worker.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/v1/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "thaw"
+database_id = "replace-with-d1-database-id"
+
+[vars]
+THAW_CHECK_PRICE_USD = "1.00"
+THAW_PAYMENT_CHAIN = "base"
+THAW_PAYMENT_CONFIRMATIONS = "1"
+THAW_CASE_LIGHT_USD = "49"
+THAW_CASE_FULL_USD = "79"
+THAW_PAID_PATH_ENABLED = "0"

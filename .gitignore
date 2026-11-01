@@ -5,5 +5,7 @@ packages/guard/dist/
 .env.*
 !.env.example
 .vercel
+.wrangler
+.dev.vars
 *.log
 .DS_Store

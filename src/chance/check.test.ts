@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { createServHooks, runChanceCheck, type ChanceDeps, type PublicResult } from './check.ts'
 import { PAID_PATH_PRICE_USD, TRANSFER_TOPIC, usdToMicro } from './constants.ts'
 import { tronHexToBase58 } from './address.ts'
-import { createStore } from './limits.ts'
+import { asAsyncStore, createStore, type LimitStore } from './limits.ts'
 import type { ChanceInput } from './parse.ts'
 import { EXPLAIN, REASON } from './rules.ts'
 import type { BanList } from './banlist.ts'
@@ -46,13 +46,16 @@ function ban(over: Partial<BanList> = {}): BanList {
   }
 }
 
-function deps(over: Partial<ChanceDeps> = {}): ChanceDeps {
+function deps(over: Partial<ChanceDeps> & { memory?: LimitStore } = {}): ChanceDeps {
+  const memory = over.memory ?? createStore()
+  const { memory: _memory, ...rest } = over
+  void _memory
   return {
     now: () => NOW,
     fetch: async () => new Response(JSON.stringify({ success: false, error: 'no' }), { status: 500 }),
     serv: null,
     banlist: ban(),
-    store: createStore(),
+    store: asAsyncStore(memory),
     limits: { dailyChecks: 3, spendCapMicro: usdToMicro(5), cacheTtlMs: 24 * 60 * 60 * 1000 },
     captchaRequired: false,
     verifyCaptcha: async () => true,
@@ -60,7 +63,7 @@ function deps(over: Partial<ChanceDeps> = {}): ChanceDeps {
     paidPathPriceUsd: PAID_PATH_PRICE_USD,
     id: () => 'check-1',
     burst: () => ({ ok: true }),
-    ...over,
+    ...rest,
   }
 }
 
@@ -301,7 +304,7 @@ describe('chance verdicts', () => {
 describe('chance limits', () => {
   it('allows 3 new checks a day and then refuses', async () => {
     const store = createStore()
-    const used = deps({ store })
+    const used = deps({ memory: store })
     const ip = '203.0.113.20'
     for (const deposit of ['aa', 'ab', 'ac']) {
       const result = await runChanceCheck(input({ deposit: deposit.repeat(32), notice: 'hello' }), ip, used)
@@ -338,7 +341,7 @@ describe('chance limits', () => {
       input(),
       '203.0.113.22',
       deps({
-        store,
+        memory: store,
         fetch: tronFetch(),
         limits: { dailyChecks: 3, spendCapMicro: usdToMicro(5), cacheTtlMs: 1000 },
         banlist: ban({
@@ -378,7 +381,7 @@ describe('chance limits', () => {
     assert.equal(asked, true)
 
     const store = createStore()
-    const used = deps({ store, paidPathEnabled: true })
+    const used = deps({ memory: store, paidPathEnabled: true })
     for (const deposit of ['ba', 'bb', 'bc']) {
       await runChanceCheck(input({ deposit: deposit.repeat(32) }), '203.0.113.25', used)
     }

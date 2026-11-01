@@ -1,3 +1,4 @@
+import { alchemyErc20To, type RpcCall } from '../chain/evm-rpc.ts'
 import { EVM_CHAIN_IDS, TRANSFER_TOPIC, type Chain } from './constants.ts'
 import { classifyDeposit, normalizeTronAddress, sameAddress } from './address.ts'
 import { compareAmount, compareDate } from './money.ts'
@@ -255,7 +256,7 @@ async function getJson(fetchImpl: FetchLike, url: string, headers?: Headers): Pr
 export async function lookupFirstHop(
   input: { chain: Chain; deposit: string; amount: string; asset: string; date: string },
   fetchImpl: FetchLike,
-  keys: { etherscanApiKey?: string; trongridApiKey?: string },
+  keys: { etherscanApiKey?: string; trongridApiKey?: string; evmCall?: RpcCall; alchemyTransfers?: boolean },
 ): Promise<HopLookup> {
   const kind = classifyDeposit(input.chain, input.deposit)
   if (!kind) {
@@ -270,6 +271,10 @@ export async function lookupFirstHop(
     }
   }
   if (input.chain === 'tron') return lookupTron(input, kind, fetchImpl, keys.trongridApiKey)
+  if (keys.evmCall && (input.chain === 'ethereum' || input.chain === 'arbitrum')) {
+    const viaRpc = await lookupEvmRpc(input, kind, keys.evmCall, keys.alchemyTransfers === true)
+    if (viaRpc.status !== 'unavailable' || !keys.etherscanApiKey) return viaRpc
+  }
   if (!keys.etherscanApiKey) {
     return {
       status: 'unavailable',
@@ -448,6 +453,95 @@ async function tokenPage(
   const response = await getJson(fetchImpl, url)
   if (!response.ok) return 'error'
   return parseEvmTokenPage(response.body)
+}
+
+async function lookupEvmRpc(
+  input: { chain: Chain; deposit: string; amount: string; asset: string; date: string },
+  kind: 'address' | 'tx',
+  call: RpcCall,
+  alchemyTransfers: boolean,
+): Promise<HopLookup> {
+  const chain = input.chain === 'arbitrum' ? 'arbitrum' : 'ethereum'
+  if (kind === 'address') {
+    if (!alchemyTransfers) {
+      return unavailable('This RPC has no transfer index. Set an Alchemy key or pass a transaction id.')
+    }
+    const sender = input.deposit.trim().toLowerCase()
+    const page = await alchemyErc20To(call, sender)
+    if (!page) return unavailable('alchemy_getAssetTransfers did not return a list.')
+    const asTransfers = page
+      .filter((item) => item.to === sender && item.rawValue)
+      .map((item) => ({
+        txId: item.hash,
+        from: item.from,
+        to: item.to ?? sender,
+        raw: item.rawValue as string,
+        decimals: item.decimals,
+        symbol: item.asset,
+        contract: item.contract,
+        timeMs: item.timeMs,
+      }))
+    return {
+      status: 'ok',
+      detail: 'Address treated as the sender. One alchemy_getAssetTransfers page (maxCount 0x64). Amount and date need a transaction id.',
+      sender,
+      hop1: topSenders(chain, asTransfers, sender, null, input.asset),
+      firstHopOk: true,
+      amountMatch: 'unknown',
+      dateMatch: 'unknown',
+    }
+  }
+  let receipt: unknown
+  try {
+    receipt = await call('eth_getTransactionReceipt', [input.deposit.trim()])
+  } catch {
+    return unavailable('EVM RPC did not return a receipt.')
+  }
+  const parsed = parseEvmReceiptTransfers({ result: receipt })
+  if (!parsed) return unavailable('EVM receipt had no result.')
+  const chosen = pickOne(parsed.transfers, input.asset)
+  if (chosen === 'ambiguous') return ambiguous('Several ERC-20 transfers in the receipt, and the asset does not pick one.')
+  if (!chosen) return unavailable('No ERC-20 Transfer log in the receipt.')
+  let deposit = chosen
+  if (deposit.timeMs === null && parsed.block) {
+    try {
+      const block = await call('eth_getBlockByNumber', [parsed.block, false])
+      deposit = { ...deposit, timeMs: parseEvmBlockTime({ result: block }) }
+    } catch {
+      deposit = { ...deposit, timeMs: null }
+    }
+  }
+  let hop: ReturnType<typeof topSenders> = []
+  let hopOk = false
+  if (alchemyTransfers) {
+    const page = await alchemyErc20To(call, deposit.from, deposit.contract)
+    if (page) {
+      hopOk = true
+      const incoming = page
+        .filter((item) => item.to === deposit.from.toLowerCase() && item.rawValue && item.hash.toLowerCase() !== input.deposit.trim().toLowerCase())
+        .map((item) => ({
+          txId: item.hash,
+          from: item.from,
+          to: item.to ?? deposit.from,
+          raw: item.rawValue as string,
+          decimals: item.decimals,
+          symbol: item.asset,
+          contract: item.contract,
+          timeMs: item.timeMs,
+        }))
+      hop = topSenders(chain, incoming, deposit.from, deposit.contract, input.asset)
+    }
+  }
+  return finish(
+    deposit,
+    hop,
+    hopOk,
+    input.amount,
+    input.date,
+    alchemyTransfers
+      ? 'EVM receipt plus one alchemy_getAssetTransfers page (maxCount 0x64).'
+      : 'EVM receipt only. The first hop needs Alchemy transfers or an optional Etherscan key.',
+  )
 }
 
 function unavailable(detail: string): HopLookup {

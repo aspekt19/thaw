@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Thaw — бесплатная проверка шанса</title>
+    <title>Thaw — проверка шанса</title>
     <link rel="stylesheet" href="/src/web/style.css">
   </head>
   <body>
@@ -12,13 +12,14 @@
       <p>Подготовка документов, если биржа заморозила вывод.</p>
     </header>
     <main>
-      <h1>Проверить шанс бесплатно</h1>
+      <h1>Проверить шанс</h1>
       <p class="lead">
-        Мы смотрим текст уведомления и первый шаг депозита в блокчейне.
+        Проверка платная: вы переводите USDC напрямую на наш кошелёк, без посредника и без кастоди.
+        Сумму и адрес показывает сервер. Эта оплата зачтётся в цену дела, если вы откроете дело по тому же заказу.
         Это не юридическая помощь и не обещание разморозки. Санкционные случаи не берём.
-        Приватные ключи и сид-фразы не присылайте: такое поле нам не нужно.
+        Приватные ключи и сид-фразы не присылайте.
       </p>
-      <form id="check-form" action="/api/check-chance" method="post">
+      <form id="check-form" action="/api/check-orders" method="post">
         <div class="field">
           <label for="exchange">Биржа</label>
           <select id="exchange" name="exchange" required>
@@ -55,7 +56,7 @@
             <option value="ethereum">Ethereum</option>
             <option value="arbitrum">Arbitrum</option>
           </select>
-          <p class="hint">Бесплатный просмотр здесь есть для TRON, Ethereum и Arbitrum.</p>
+          <p class="hint">Первый шаг депозита смотрим в TRON, Ethereum и Arbitrum.</p>
         </div>
         <div class="field">
           <label for="deposit">Адрес отправителя или txid депозита</label>
@@ -93,7 +94,7 @@
         </div>
         <input id="captchaToken" name="captchaToken" type="hidden" value="">
         <input id="clientId" name="clientId" type="hidden" value="">
-        <button id="submit" type="submit">Проверить бесплатно</button>
+        <button id="submit" type="submit">Получить счёт</button>
       </form>
       <section id="result" aria-live="polite"></section>
     </main>
