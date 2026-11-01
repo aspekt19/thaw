@@ -50,7 +50,7 @@ const PAY_ERROR: Record<string, string> = {
   no_transfer: 'No matching USDC transfer was found in that transaction.',
   wrong_token: 'That transfer is not USDC on this network.',
   wrong_recipient: 'The USDC did not go to the address on this invoice.',
-  wrong_amount: 'The amount does not match. Send the exact figure, including the fraction.',
+  wrong_amount: 'The amount does not match. Send the exact amount shown.',
   confirmations: 'The transfer needs more confirmations. Leave this page open.',
   rpc: 'The chain check did not answer. We will try again.',
   reused: 'That transfer was already used on another invoice.',
@@ -155,18 +155,6 @@ let routed = false
 const clientId = document.querySelector<HTMLInputElement>('#clientId')
 if (clientId) clientId.value = browserId()
 
-document.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((button) => {
-  button.addEventListener('click', () => {
-    const tier = button.dataset.pick === 'full' ? 'full' : 'light'
-    setTier(tier)
-    document.getElementById('remainder')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  })
-})
-
-document.querySelectorAll<HTMLButtonElement>('#remainder .tier').forEach((button) => {
-  button.addEventListener('click', () => setTier(button.dataset.tier === 'full' ? 'full' : 'light'))
-})
-
 document.querySelector('#check-form')?.addEventListener('submit', (event) => {
   event.preventDefault()
   void sendCheck()
@@ -266,17 +254,6 @@ function show(name: string, animate: boolean): void {
   else apply()
 }
 
-function setTier(tier: 'light' | 'full'): void {
-  document.querySelectorAll<HTMLButtonElement>('#remainder .tier').forEach((button) => {
-    button.classList.toggle('on', button.dataset.tier === tier)
-  })
-  const price = tier === 'full' ? 79 : 49
-  const remainder = price - 1
-  const line = document.querySelector('#remainder-line')
-  if (line) line.textContent = `$${price} file, minus the $1 check, leaves $${remainder}.00 before the unique fraction.`
-  nudge(line)
-}
-
 async function sendCheck(): Promise<void> {
   const form = document.querySelector<HTMLFormElement>('#check-form')
   const submit = document.querySelector<HTMLButtonElement>('#submit')
@@ -352,7 +329,7 @@ async function paintInvoice(): Promise<void> {
   }
   root.append(invoiceBlock({
     title: 'Pay the check',
-    lead: 'Send this exact amount of USDC on Base. A round $1 will not match. The check fee is credited if you open a file on this same check.',
+    lead: 'Send exactly this amount of USDC on Base. The check fee is credited if you open a file on this same check.',
     amount: order.amountUsd ? `${order.amountUsd} USDC` : '',
     rows: [
       ['Network', order.chain ?? 'base'],
@@ -365,7 +342,7 @@ async function paintInvoice(): Promise<void> {
     steps: [
       'In your own wallet, switch to Base.',
       'Send USDC, not ETH, to the address above.',
-      'Use the exact amount, including the fraction after the dollar.',
+      'Send exactly the amount shown.',
       'Paste the transaction hash below. We read the transfer on chain. We never ask for a key or a seed phrase.',
     ],
     hashKey: TX_KEY,
@@ -637,7 +614,7 @@ async function paintCase(): Promise<void> {
   }
   root.append(invoiceBlock({
     title: 'Pay the remainder',
-    lead: `${tierName(row.tier)} is ${row.priceUsd} USD. The check credit is ${row.feeUsd} USD. You pay the rest, plus a unique fraction under $0.10.`,
+    lead: `${tierName(row.tier)} is ${row.priceUsd} USD. The check credit is ${row.feeUsd} USD. Send exactly the amount shown.`,
     amount: row.amountUsd ? `${row.amountUsd} USDC` : '',
     rows: [
       ['Network', row.chain ?? 'base'],
@@ -645,14 +622,14 @@ async function paintCase(): Promise<void> {
       ['Send to', row.recipient ?? ''],
       ['Price', row.priceUsd ? `${row.priceUsd} USD` : ''],
       ['Check already paid', row.feeUsd ? `${row.feeUsd} USD` : ''],
-      ['Remainder before the fraction', row.netUsd ? `${row.netUsd} USD` : ''],
+      ['Price after the check credit', row.netUsd ? `${row.netUsd} USD` : ''],
       ['Exact amount', row.amountUsd ? `${row.amountUsd} USDC` : ''],
       ['Atomic units', row.amountAtomic ?? ''],
       ['File', row.caseId],
     ],
     steps: [
       'Send USDC on Base from your own wallet.',
-      'Match the exact amount. The credit is already subtracted.',
+      'Send exactly the amount shown. The check credit is already subtracted.',
       'Paste the new transaction hash. The hash that paid the check cannot pay this invoice.',
       'The file is marked paid only after the chain check passes.',
     ],
@@ -929,17 +906,6 @@ function setStatus(text: string, mode: 'wait' | 'bad' | 'done'): void {
   status.classList.toggle('is-wait', mode === 'wait')
   status.classList.toggle('is-bad', mode === 'bad')
   status.classList.toggle('is-done', mode === 'done')
-}
-
-function nudge(el: Element | null): void {
-  if (!(el instanceof HTMLElement) || !prefersMotion()) return
-  el.animate(
-    [
-      { opacity: 0.35, transform: 'translateY(8px)' },
-      { opacity: 1, transform: 'none' },
-    ],
-    { duration: 320, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
-  )
 }
 
 function rise(): void {
