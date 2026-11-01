@@ -207,6 +207,7 @@
               <option value="kucoin">KuCoin</option>
               <option value="kraken">Kraken</option>
               <option value="crypto_com">Crypto.com</option>
+              <option value="htx">HTX (Huobi)</option>
               <option value="other">Another exchange</option>
             </select>
           </div>
@@ -272,6 +273,27 @@
             <input id="priorExchangeRejection" name="priorExchangeRejection" type="checkbox" value="yes">
             <label for="priorExchangeRejection">The exchange already rejected an appeal</label>
           </div>
+          <fieldset class="field">
+            <legend>What kind of hold is this?</legend>
+            <div class="pills">
+              <label class="pill"><input type="radio" name="holdType" value="aml" required> AML / compliance review</label>
+              <label class="pill"><input type="radio" name="holdType" value="travel_rule"> Travel Rule (exchange asks who sent the funds)</label>
+              <label class="pill"><input type="radio" name="holdType" value="unknown" checked> Not sure</label>
+            </div>
+          </fieldset>
+          <div class="field check">
+            <input id="htxLinked" name="htxLinked" type="checkbox" value="yes">
+            <label for="htxLinked">Are the funds connected to HTX (Huobi)?</label>
+          </div>
+          <fieldset class="field" id="place-fields" hidden>
+            <legend>Where you live</legend>
+            <label for="clientCountry">Country of residence</label>
+            <select id="clientCountry" name="clientCountry"></select>
+            <label for="clientNationality">Citizenship, if it is different</label>
+            <select id="clientNationality" name="clientNationalities"></select>
+            <label for="clientNationalitiesMore">Another citizenship, if you have one</label>
+            <input id="clientNationalitiesMore" name="clientNationalitiesMore" autocomplete="off" spellcheck="false" placeholder="Two-letter code, for example FR">
+          </fieldset>
           <div class="field" id="rounds-field" hidden>
             <label for="priorRoundsCount">How many rounds did you already send?</label>
             <input id="priorRoundsCount" name="priorRoundsCount" type="number" min="0" max="20" value="1" inputmode="numeric">
@@ -299,7 +321,7 @@
         <p>This page is a draft placeholder. It is not a finished contract.</p>
         <p>Thaw prepares documents. It is not a law firm and not legal advice. We do not promise that an exchange will release a withdrawal or reopen an account.</p>
         <p>The chance check is a paid read of your notice and of public chain data. The published minimum is $1, paid in USDC to the address on your invoice. That fee is credited toward a light file at $49 or a full file at $79 on the same check. The remainder is a second USDC transfer. A case is paid only after we verify that transfer.</p>
-        <p>We decline sanctions cases, police or court holds, theft, and final closures. A low chance opens a Full file only after you confirm the warnings. We do not create, alter, or falsify any document.</p>
+        <p>We decline sanctions cases, police or court holds, theft, and final closures. We also can't take HTX-related cases for UK or EU residents or citizens. That is not legal advice. A low chance opens a Full file only after you confirm the warnings. We do not create, alter, or falsify any document.</p>
         <p>You pay from your own wallet. We never ask for a private key or a seed phrase.</p>
       </section>
     </div>

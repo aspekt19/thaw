@@ -6,6 +6,7 @@ export type RequestedDoc =
   | "source_of_funds" | "source_of_wealth" | "bank_statement" | "proof_of_address"
   | "exchange_statement" | "wallet_ownership" | "video" | "questionnaire" | "other";
 export type Tier = "light" | "full";
+export type HoldType = "travel_rule" | "aml" | "unknown";
 
 export interface TierInput {
   exchange: Exchange;
@@ -20,13 +21,24 @@ export interface TierInput {
   evidence: Evidence[];                   // new form field (decided 2026-11-01)
   amountUsd?: number;                     // informational only; no amount threshold (decided 2026-11-01)
   userConfirmedLowChance?: boolean;       // must be exactly true to open a case with verdict "low"
+  // Travel Rule (Yura decision 2026-11-01 15:48): sell Light, but only after we checked the cause.
+  holdType?: HoldType;                    // what the hold looks like (from notice classification / form)
+  travelRuleConfirmed?: boolean;          // true only after OUR check that the cause really is Travel Rule
+  // HTX (Yura decision 2026-11-01 15:49): decline only for UK/EU clients.
+  clientCountry?: string;                 // ISO-2 country of residence, e.g. "DE", "GB", "TR", "US"
+  clientNationalities?: string[];         // ISO-2 citizenships (EU/UK rules also cover nationals abroad)
+  htxLinked?: boolean;                    // funds came from / went to HTX (exchange may be another one)
 }
 
 export type RuleId =
   | "LOW_POLICY_FULL" | "PRIOR_REJECTION" | "OWNERSHIP_REQUESTED" | "OKX_TXID_ONLY"
   | "COMPLEX_SOURCES" | "MANY_DEPOSITS" | "MANY_DOCS_REQUESTED" | "MANY_ADDRESSES"
-  | "LIGHT_OVER_BUDGET" | "LIGHT_DEFAULT";
-export type Flag = "FULL_BUDGET_GUARD" | "GENERIC_EXCHANGE" | "KUCOIN_LANGUAGE" | "ADDRESSES_UNKNOWN";
+  | "LIGHT_OVER_BUDGET" | "TRAVEL_RULE_LIGHT" | "LIGHT_DEFAULT";
+export type RefusalReason = "NOT_ELIGIBLE" | "HTX_UK_EU_CLIENT";
+export type Flag =
+  | "FULL_BUDGET_GUARD" | "GENERIC_EXCHANGE" | "KUCOIN_LANGUAGE" | "ADDRESSES_UNKNOWN"
+  | "TRAVEL_RULE_VERIFY_FIRST"  // travel_rule hold, not confirmed yet: check the cause before answering the client
+  | "HTX_COUNTRY_REQUIRED";     // HTX-related case without client country: ask before opening the case
 
 export interface TierConfig {
   allowLowVerdict: boolean;     // Yura decision 2026-11-01: true (only with warnings + explicit confirmation)
@@ -38,7 +50,15 @@ export interface TierConfig {
   costPerAddress: { light: number; full: number }; // USD, calibrate on real runs
   price: { light: number; full: number };          // 49, 79
   maxCostShare: number;         // 0.8 (margin >= 20%)
+  htxDeclineCountries: string[];// ISO-2: EU member states + GB (Yura decision 2026-11-01 15:49)
 }
+
+// EU member states (27) + United Kingdom, ISO 3166-1 alpha-2. Greece is "GR" (EU uses "EL", normalised below).
+export const EU_MEMBER_STATES = [
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+  "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+];
+export const HTX_DECLINE_COUNTRIES = [...EU_MEMBER_STATES, "GB"];
 
 export const DEFAULT_CONFIG: TierConfig = {
   allowLowVerdict: true,
@@ -50,6 +70,7 @@ export const DEFAULT_CONFIG: TierConfig = {
   costPerAddress: { light: 7.45 / 30, full: 21.45 / 30 },
   price: { light: 49, full: 79 },
   maxCostShare: 0.8,
+  htxDeclineCountries: HTX_DECLINE_COUNTRIES,
 };
 
 // Where each warning is shown. All four must be shown for a low-chance case.
@@ -73,13 +94,13 @@ export const LOW_CHANCE_WARNINGS: LowChanceWarning[] = [
     " Please check every document before you send it." },
 ];
 
-export type CaseStatus = "ok" | "blocked_low_chance" | "refused";
+export type CaseStatus = "ok" | "blocked_low_chance" | "blocked_need_country" | "refused";
 
 export interface TierResult {
   status: CaseStatus;           // "ok" = case can be opened
   canOpenCase: boolean;
   tier: Tier | null;            // recommended tier; null = refused (no paid case)
-  reason: RuleId | "NOT_ELIGIBLE";
+  reason: RuleId | RefusalReason;
   matched: RuleId[];            // all rules that matched, for UI/debug
   flags: Flag[];
   lowChanceAck: { required: boolean; confirmed: boolean; warnings: LowChanceWarning[] };
@@ -91,6 +112,18 @@ export interface TierResult {
 
 const COMPLEX: FundsSource[] = ["p2p", "otc", "defi", "unknown"];
 const r2 = (x: number) => Math.round(x * 100) / 100;
+const iso2 = (x: string) => { const u = x.trim().toUpperCase(); return u === "UK" ? "GB" : u === "EL" ? "GR" : u; };
+
+// HTX-related case: the frozen account is on HTX, or the disputed funds came from / went to HTX.
+export function isHtxRelated(i: TierInput): boolean {
+  return i.exchange === "htx" || i.htxLinked === true;
+}
+// UK/EU client: residence or any citizenship in the list (EU Reg. 833/2014 art. 13, UK SAMLA 2018 s.21).
+export function isHtxDeclinedClient(i: TierInput, c: TierConfig = DEFAULT_CONFIG): boolean {
+  const list = c.htxDeclineCountries.map(iso2);
+  const countries = [i.clientCountry, ...(i.clientNationalities ?? [])].filter((x): x is string => !!x).map(iso2);
+  return countries.some(x => list.includes(x));
+}
 
 export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): TierResult {
   const addr = i.addressesCount ?? c.defaultAddresses;
@@ -100,15 +133,23 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
   if (i.addressesCount === null) flags.push("ADDRESSES_UNKNOWN");
   if (i.exchange === "other") flags.push("GENERIC_EXCHANGE");
   if (i.exchange === "kucoin") flags.push("KUCOIN_LANGUAGE");
+  const travelRule = i.holdType === "travel_rule";
+  const trConfirmed = travelRule && i.travelRuleConfirmed === true;
+  if (travelRule && !trConfirmed) flags.push("TRAVEL_RULE_VERIFY_FIRST");
 
   const isLow = i.verdict === "low";
   const confirmed = i.userConfirmedLowChance === true;
   const eligible = i.verdict === "high" || i.verdict === "medium" || (isLow && c.allowLowVerdict);
-  if (!eligible) return {
-    status: "refused", canOpenCase: false, tier: null, reason: "NOT_ELIGIBLE", matched: [], flags,
+  const refuse = (reason: RefusalReason): TierResult => ({
+    status: "refused", canOpenCase: false, tier: null, reason, matched: [], flags,
     lowChanceAck: { required: false, confirmed: false, warnings: [] },
     lightAllowed: false, lightBlockedNote: null, estCostUsd: est, costCapUsd: cap,
-  };
+  });
+  if (!eligible) return refuse("NOT_ELIGIBLE");
+  const htx = isHtxRelated(i);
+  if (htx && isHtxDeclinedClient(i, c)) return refuse("HTX_UK_EU_CLIENT");
+  const needCountry = htx && !i.clientCountry;
+  if (needCountry) flags.push("HTX_COUNTRY_REQUIRED");
 
   const rules: [RuleId, boolean][] = [
     ["LOW_POLICY_FULL", isLow && c.lowVerdictTier === "full"],
@@ -121,13 +162,17 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
     ["MANY_ADDRESSES", addr > c.maxLightAddresses],
     ["LIGHT_OVER_BUDGET", est.light > cap.light],
   ];
-  const matched = rules.filter(([, hit]) => hit).map(([id]) => id);
-  const tier: Tier = matched.length ? "full" : "light";
+  const fullHits = rules.filter(([, hit]) => hit).map(([id]) => id);
+  const lightAllowed = !fullHits.includes("LIGHT_OVER_BUDGET");
+  // R_TR: confirmed Travel Rule hold -> Light, wins over R0..R7. R8 (margin >= 20%) still wins over R_TR.
+  const trLight = trConfirmed && lightAllowed;
+  const matched: RuleId[] = trLight ? ["TRAVEL_RULE_LIGHT", ...fullHits] : fullHits;
+  const tier: Tier = trLight || !fullHits.length ? "light" : "full";
   if (tier === "full" && est.full > cap.full) flags.push("FULL_BUDGET_GUARD");
   const blocked = isLow && !confirmed;
-  const lightAllowed = !matched.includes("LIGHT_OVER_BUDGET");
   return {
-    status: blocked ? "blocked_low_chance" : "ok", canOpenCase: !blocked,
+    status: blocked ? "blocked_low_chance" : needCountry ? "blocked_need_country" : "ok",
+    canOpenCase: !blocked && !needCountry,
     tier, reason: matched[0] ?? "LIGHT_DEFAULT", matched: matched.length ? matched : ["LIGHT_DEFAULT"], flags,
     lowChanceAck: isLow
       ? { required: true, confirmed, warnings: LOW_CHANCE_WARNINGS }
@@ -208,8 +253,18 @@ export const REASON_LINE: Record<RuleId, string> = {
   MANY_DOCS_REQUESTED: 'The exchange asks for several kinds of documents, so we recommend the Full case, which builds an indexed document pack matched to the request.',
   MANY_ADDRESSES: 'Your funds passed through many addresses, and the Full case checks all of them with several screening providers.',
   LIGHT_OVER_BUDGET: 'Your case needs more screening work than the Light case allows, so we recommend the Full case.',
+  TRAVEL_RULE_LIGHT: "Your funds are on hold because of the exchange's Travel Rule check, so the Light case should cover the sender and recipient details the exchange asked for.",
   LIGHT_DEFAULT: 'Your case looks simple: one or two deposits with clear sources, so the Light case should cover what the exchange asked for.',
 }
+
+export const REFUSAL_LINE: Record<RefusalReason, string> = {
+  NOT_ELIGIBLE: 'We will not prepare papers for this notice.',
+  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents or citizens, so we can't open a case for you. This is not legal advice.",
+}
+
+export const TRAVEL_RULE_VERIFY_NOTE = 'We first verify that the hold is really caused by the Travel Rule. Until that check is done, the file follows the ordinary rules.'
+
+export const NEED_COUNTRY_NOTE = 'Tell us your country of residence, and any other citizenship, before we can open a file on an HTX-related case.'
 
 export const MISSING_LINE: Record<RuleId, string> = {
   PRIOR_REJECTION: "a document check against the exchange's request, a second round, or a formal complaint draft",
@@ -221,6 +276,7 @@ export const MISSING_LINE: Record<RuleId, string> = {
   MANY_ADDRESSES: 'screening of every address with several providers',
   LIGHT_OVER_BUDGET: 'screening of every address with several providers',
   LOW_POLICY_FULL: 'screening of every address with several providers',
+  TRAVEL_RULE_LIGHT: 'the extra Full-case steps',
   LIGHT_DEFAULT: 'the extra Full-case steps',
 }
 

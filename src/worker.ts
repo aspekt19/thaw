@@ -8,7 +8,7 @@ import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
 import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
-import { LOW_CHANCE_WARNINGS, choiceResult, chooseTier } from './chance/tier.ts'
+import { LOW_CHANCE_WARNINGS, NEED_COUNTRY_NOTE, choiceResult, chooseTier } from './chance/tier.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
 
 export interface Env {
@@ -295,7 +295,16 @@ async function openCase(request: Request, env: Env): Promise<Response> {
   }
   const stored = JSON.parse(order.result_json) as {
     verdict?: string
-    recommendation?: { tier?: string; lightAllowed?: boolean; lightBlockedNote?: string | null }
+    recommendation?: {
+      tier?: string
+      lightAllowed?: boolean
+      lightBlockedNote?: string | null
+      status?: string
+      reason?: string
+      reasonId?: string
+      flags?: string[]
+      canOpenCase?: boolean
+    }
   }
   const verdict = stored.verdict
   const confirmedLow = row.userConfirmedLowChance === true
@@ -306,6 +315,12 @@ async function openCase(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, code: 'verdict', error: 'We do not open a file for this notice.' }, 403)
   }
   const recommended = stored.recommendation
+  if (recommended?.status === 'refused' || (recommended?.canOpenCase === false && recommended.status !== 'blocked_low_chance')) {
+    return json({ ok: false, code: recommended.reasonId ?? recommended.status ?? 'verdict', error: recommended.reason ?? 'That file is not available for this check.' }, 403)
+  }
+  if (recommended?.flags?.includes('HTX_COUNTRY_REQUIRED')) {
+    return json({ ok: false, code: 'blocked_need_country', error: recommended.reason ?? NEED_COUNTRY_NOTE }, 403)
+  }
   if (recommended && (recommended.tier === 'light' || recommended.tier === 'full')) {
     const choice = chooseTier(
       choiceResult(recommended.tier, recommended.lightAllowed !== false, recommended.lightBlockedNote ?? null),

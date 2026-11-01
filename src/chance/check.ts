@@ -19,7 +19,7 @@ import { screenAddresses, type BanList } from './banlist.ts'
 import { lookupFirstHop, type HopLookup } from './lookup.ts'
 import { cacheKey, userKey, utcDay, type AsyncLimitStore, type LimitConfig } from './limits.ts'
 import { decide, type BanState } from './rules.ts'
-import { MISSING_LINE, PRODUCT_TIER_CONFIG, REASON_LINE, TIER_NOTE, recommendTier, type Exchange as TierExchange, type LowChanceWarning, type RuleId } from './tier.ts'
+import { MISSING_LINE, NEED_COUNTRY_NOTE, PRODUCT_TIER_CONFIG, REASON_LINE, REFUSAL_LINE, TIER_NOTE, TRAVEL_RULE_VERIFY_NOTE, recommendTier, type Exchange as TierExchange, type Flag, type LowChanceWarning, type RefusalReason, type RuleId } from './tier.ts'
 import type { ChanceInput } from './parse.ts'
 
 const CATEGORY_LIST = [
@@ -97,17 +97,18 @@ export type PublicResult = {
    * SERV document labels are not connected, so those rules do not fire.
    */
   recommendation: {
-    tier: 'light' | 'full'
-    reasonId: RuleId
+    tier: 'light' | 'full' | null
+    reasonId: RuleId | RefusalReason
     reason: string
     missing: string
     priceUsd: number
     note: string
-    status: 'ok' | 'blocked_low_chance'
+    status: 'ok' | 'blocked_low_chance' | 'blocked_need_country' | 'refused'
     canOpenCase: boolean
     lowChance: { required: boolean; warnings: LowChanceWarning[] }
     lightAllowed: boolean
     lightBlockedNote: string | null
+    flags: Flag[]
   } | null
   paidPath: { enabled: boolean; priceUsd: number; implemented: false }
 }
@@ -297,6 +298,7 @@ function tierExchange(exchange: ChanceInput['exchange']): TierExchange {
     exchange === 'coinbase' ||
     exchange === 'kraken' ||
     exchange === 'kucoin' ||
+    exchange === 'htx' ||
     exchange === 'other'
   ) {
     return exchange
@@ -319,22 +321,34 @@ function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLook
       ownershipProofRequested: false,
       evidence: input.evidence ?? [],
       disputedDepositsCount: input.disputedDepositsCount ?? 1,
+      holdType: input.holdType,
+      // A Travel Rule cause is confirmed only by our own check. The form cannot set this.
+      travelRuleConfirmed: false,
+      clientCountry: input.clientCountry,
+      clientNationalities: input.clientNationalities,
+      htxLinked: input.htxLinked,
     },
     PRODUCT_TIER_CONFIG,
   )
-  if (!picked.tier || picked.reason === 'NOT_ELIGIBLE') return null
+  if (picked.reason === 'NOT_ELIGIBLE') return null
+  const reason = picked.reason in REASON_LINE
+    ? REASON_LINE[picked.reason as RuleId]
+    : picked.status === 'blocked_need_country'
+      ? NEED_COUNTRY_NOTE
+      : REFUSAL_LINE[picked.reason as RefusalReason]
   return {
     tier: picked.tier,
     reasonId: picked.reason,
-    reason: REASON_LINE[picked.reason],
-    missing: MISSING_LINE[picked.reason],
+    reason,
+    missing: picked.reason in MISSING_LINE ? MISSING_LINE[picked.reason as RuleId] : '',
     priceUsd: picked.tier === 'full' ? PRODUCT_TIER_CONFIG.price.full : PRODUCT_TIER_CONFIG.price.light,
-    note: TIER_NOTE,
-    status: picked.status === 'blocked_low_chance' ? 'blocked_low_chance' : 'ok',
+    note: picked.flags.includes('TRAVEL_RULE_VERIFY_FIRST') ? TRAVEL_RULE_VERIFY_NOTE : TIER_NOTE,
+    status: picked.status === 'ok' ? 'ok' : picked.status,
     canOpenCase: picked.canOpenCase,
     lowChance: { required: picked.lowChanceAck.required, warnings: picked.lowChanceAck.warnings },
     lightAllowed: picked.lightAllowed,
     lightBlockedNote: picked.lightBlockedNote,
+    flags: picked.flags,
   }
 }
 

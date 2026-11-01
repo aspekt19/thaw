@@ -3,7 +3,7 @@ import '@fontsource/inter-tight/latin-700.css'
 import '@fontsource/source-serif-4/latin-400.css'
 import '@fontsource/source-serif-4/latin-600.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
-import { LIGHT_BLOCKED_NOTE, LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, choiceResult, chooseTier, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
+import { LIGHT_BLOCKED_NOTE, LIGHT_PICK_NOTE, LOW_CHANCE_WARNINGS, NEED_COUNTRY_NOTE, REASON_LINE, TRAVEL_RULE_VERIFY_NOTE, choiceResult, chooseTier, downgradeWarning, upgradeOfferText, type LowChancePlace, type RuleId } from '../chance/tier.ts'
 
 const REASON_EN: Record<string, string> = {
   [REASON.police]: 'The notice says the hold is for the police or a court.',
@@ -60,6 +60,8 @@ const PAY_ERROR: Record<string, string> = {
   blocked_low_chance: 'A low chance stays closed until you confirm you still want the file.',
   LIGHT_NOT_ALLOWED: LIGHT_BLOCKED_NOTE,
   NO_CASE: 'We do not open a file for this notice.',
+  blocked_need_country: NEED_COUNTRY_NOTE,
+  HTX_UK_EU_CLIENT: "We can't take HTX-related cases for UK or EU residents or citizens, so we can't open a case for you. This is not legal advice.",
   tier: 'This check already has a file on the other price.',
   input: 'Check the form. Something required is missing or not in the right shape.',
   json: 'The server could not read that request.',
@@ -103,17 +105,18 @@ type Result = {
   disclaimer?: string
   depositExplorer?: string | null
   recommendation?: {
-    tier: 'light' | 'full'
-    reasonId: RuleId
+    tier: 'light' | 'full' | null
+    reasonId: RuleId | 'NOT_ELIGIBLE' | 'HTX_UK_EU_CLIENT'
     reason: string
     missing: string
     priceUsd: number
     note: string
-    status?: 'ok' | 'blocked_low_chance'
+    status?: 'ok' | 'blocked_low_chance' | 'blocked_need_country' | 'refused'
     canOpenCase?: boolean
     lowChance?: { required: boolean; warnings: Array<{ place: LowChancePlace; text: string }> }
     lightAllowed?: boolean
     lightBlockedNote?: string | null
+    flags?: string[]
   } | null
 }
 
@@ -176,6 +179,49 @@ document.querySelector('#priorExchangeRejection')?.addEventListener('change', (e
 
 window.addEventListener('hashchange', route)
 route()
+
+const COUNTRIES: Array<[string, string]> = [
+  ['AT', 'Austria'], ['BE', 'Belgium'], ['BG', 'Bulgaria'], ['HR', 'Croatia'], ['CY', 'Cyprus'],
+  ['CZ', 'Czechia'], ['DK', 'Denmark'], ['EE', 'Estonia'], ['FI', 'Finland'], ['FR', 'France'],
+  ['DE', 'Germany'], ['GR', 'Greece'], ['HU', 'Hungary'], ['IE', 'Ireland'], ['IT', 'Italy'],
+  ['LV', 'Latvia'], ['LT', 'Lithuania'], ['LU', 'Luxembourg'], ['MT', 'Malta'], ['NL', 'Netherlands'],
+  ['PL', 'Poland'], ['PT', 'Portugal'], ['RO', 'Romania'], ['SK', 'Slovakia'], ['SI', 'Slovenia'],
+  ['ES', 'Spain'], ['SE', 'Sweden'], ['GB', 'United Kingdom'], ['NO', 'Norway'], ['CH', 'Switzerland'],
+  ['IS', 'Iceland'], ['LI', 'Liechtenstein'], ['TR', 'Turkey'], ['US', 'United States'], ['CA', 'Canada'],
+  ['AU', 'Australia'], ['AE', 'United Arab Emirates'], ['SG', 'Singapore'], ['JP', 'Japan'], ['KR', 'South Korea'],
+  ['BR', 'Brazil'], ['IN', 'India'], ['UA', 'Ukraine'], ['GE', 'Georgia'], ['KZ', 'Kazakhstan'],
+]
+
+function fillCountries(): void {
+  for (const id of ['clientCountry', 'clientNationality']) {
+    const select = document.querySelector<HTMLSelectElement>(`#${id}`)
+    if (!select || select.options.length > 1) continue
+    const blank = document.createElement('option')
+    blank.value = ''
+    blank.textContent = id === 'clientCountry' ? 'Select a country' : 'Same as residence'
+    select.append(blank)
+    for (const [code, name] of COUNTRIES) {
+      const option = document.createElement('option')
+      option.value = code
+      option.textContent = name
+      select.append(option)
+    }
+  }
+}
+
+function showPlace(): void {
+  const exchange = document.querySelector<HTMLSelectElement>('#exchange')?.value
+  const linked = document.querySelector<HTMLInputElement>('#htxLinked')?.checked === true
+  const needed = exchange === 'htx' || linked
+  document.querySelector('#place-fields')?.toggleAttribute('hidden', !needed)
+  const country = document.querySelector<HTMLSelectElement>('#clientCountry')
+  if (country) country.required = needed
+}
+
+fillCountries()
+document.querySelector('#exchange')?.addEventListener('change', showPlace)
+document.querySelector('#htxLinked')?.addEventListener('change', showPlace)
+showPlace()
 
 function stopPoll(): void {
   window.clearInterval(pollTimer)
@@ -267,19 +313,25 @@ function payload(form: HTMLFormElement): Record<string, unknown> {
   const lists = new Map<string, string[]>()
   data.forEach((value, key) => {
     if (typeof value !== 'string' || value === '') return
-    if (key === 'fundsSources' || key === 'evidence') {
+    if (key === 'fundsSources' || key === 'evidence' || key === 'clientNationalities') {
       const list = lists.get(key) ?? []
       list.push(value)
       lists.set(key, list)
       return
     }
-    if (key === 'priorExchangeRejection') out[key] = true
+    if (key === 'priorExchangeRejection' || key === 'htxLinked') out[key] = true
     else out[key] = value
   })
   for (const [key, list] of lists) out[key] = list
   if (!out.fundsSources) out.fundsSources = []
   if (!out.evidence) out.evidence = []
+  const extra = typeof out.clientNationalitiesMore === 'string' ? out.clientNationalitiesMore.split(/[\s,]+/).filter(Boolean) : []
+  const citizenships = Array.isArray(out.clientNationalities) ? out.clientNationalities.map(String) : []
+  out.clientNationalities = [...citizenships, ...extra]
+  delete out.clientNationalitiesMore
+  if (!out.clientCountry) delete out.clientCountry
   if (!out.priorExchangeRejection) out.priorExchangeRejection = false
+  if (!out.htxLinked) out.htxLinked = false
   if (!out.priorExchangeRejection) delete out.priorRoundsCount
   return out
 }
@@ -380,16 +432,31 @@ async function paintResult(): Promise<void> {
     explorer.append(anchor)
     root.append(explorer)
   }
+  const gate = result.recommendation
+  const needsCountry = gate?.flags?.includes('HTX_COUNTRY_REQUIRED') === true
+  const refused = gate?.status === 'refused'
   root.append(subhead('Next step'))
-  root.append(paragraph(nextStep(result.verdict)))
-  root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
-  if (result.recommendation?.tier && result.verdict !== 'cannot_help') {
-    root.append(recommendationBlock(result.recommendation))
+  root.append(paragraph(nextStep(result.verdict, gate)))
+  if (!refused && !needsCountry) {
+    root.append(paragraph('This is document preparation, not legal advice. We do not promise that the withdrawal will be released. Only the exchange decides. We decline sanctions cases.'))
+  }
+  if (gate?.flags?.includes('TRAVEL_RULE_VERIFY_FIRST')) root.append(noteBox(TRAVEL_RULE_VERIFY_NOTE))
+  if (gate?.tier && !refused && !needsCountry && result.verdict !== 'cannot_help') {
+    root.append(recommendationBlock(gate))
   }
   stamp(root)
 }
 
+function noteBox(text: string): HTMLElement {
+  const note = document.createElement('p')
+  note.className = 'warn-box'
+  note.textContent = text
+  return note
+}
+
 function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLElement {
+  if (rec.tier !== 'light' && rec.tier !== 'full') return document.createElement('section')
+  const recommended = rec.tier
   const low = rec.lowChance?.required === true
   const box = document.createElement('section')
   box.className = 'recommend'
@@ -443,12 +510,12 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
   const stopped = document.createElement('p')
   stopped.hidden = true
   stopped.textContent = 'We will not open a file unless you choose to continue.'
-  let chosen: 'light' | 'full' = rec.tier
+  let chosen: 'light' | 'full' = recommended
   let halted = false
   const refresh = () => {
-    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
-    if (!choice.ok) chosen = rec.tier
-    const applied = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
+    const choice = chooseTier(choiceResult(recommended, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
+    if (!choice.ok) chosen = recommended
+    const applied = chooseTier(choiceResult(recommended, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), chosen)
     offer.hidden = halted
     stopped.hidden = !halted
     light.disabled = rec.lightAllowed === false
@@ -458,18 +525,18 @@ function recommendationBlock(rec: NonNullable<Result['recommendation']>): HTMLEl
     blocked.textContent = rec.lightBlockedNote ?? ''
     warning.hidden = !applied.needsConfirmation && applied.override !== 'light_to_full'
     confirm.hidden = !applied.needsConfirmation
-    if (applied.needsConfirmation) warning.textContent = downgradeWarning(rec.reasonId)
+    if (applied.needsConfirmation && rec.reasonId in REASON_LINE) warning.textContent = downgradeWarning(rec.reasonId as RuleId)
     if (applied.override === 'light_to_full') warning.textContent = LIGHT_PICK_NOTE
     open.textContent = low ? 'Yes, continue' : chosen === 'full' ? 'Open the Full file, $79' : 'Open the Light file, $49'
     open.disabled = applied.needsConfirmation && !checkbox.checked
   }
   light.addEventListener('click', () => {
-    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'light')
+    const choice = chooseTier(choiceResult(recommended, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'light')
     if (choice.ok) chosen = 'light'
     refresh()
   })
   full.addEventListener('click', () => {
-    const choice = chooseTier(choiceResult(rec.tier, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'full')
+    const choice = chooseTier(choiceResult(recommended, rec.lightAllowed !== false, rec.lightBlockedNote ?? null), 'full')
     if (choice.ok) chosen = 'full'
     refresh()
   })
@@ -506,7 +573,9 @@ function tierPick(tier: 'light' | 'full', label: string, on: boolean): HTMLButto
   return button
 }
 
-function nextStep(verdict: string): string {
+function nextStep(verdict: string, gate?: Result['recommendation']): string {
+  if (gate?.flags?.includes('HTX_COUNTRY_REQUIRED')) return gate.reason || NEED_COUNTRY_NOTE
+  if (gate?.status === 'refused') return gate.reason
   if (verdict === 'high' || verdict === 'medium') {
     return 'You can open a light file at $49 or a full file at $79. The check you paid is subtracted. The remainder is a second USDC invoice, and the file stays unpaid until that transfer is verified.'
   }

@@ -189,4 +189,100 @@ describe('tier recommendation', () => {
     assert.equal(no.ok, false)
     assert.equal(no.error, 'NO_CASE')
   })
+
+  const travelCases: Array<[string, Partial<TierInput>]> = [
+    ['T25a', {}],
+    ['T25b', { ownershipProofRequested: true, disputedDepositsCount: 3, fundsSources: ['p2p'] }],
+  ]
+  for (const [id, patch] of travelCases) {
+    it(`${id} recommends Light for a confirmed Travel Rule hold`, () => {
+      const result = recommendTier({ ...base, ...patch, holdType: 'travel_rule', travelRuleConfirmed: true })
+      assert.equal(result.status, 'ok')
+      assert.equal(result.canOpenCase, true)
+      assert.equal(result.tier, 'light')
+      assert.equal(result.reason, 'TRAVEL_RULE_LIGHT')
+      assert.equal(result.lightAllowed, true)
+      assert.equal(result.flags.includes('TRAVEL_RULE_VERIFY_FIRST'), false)
+    })
+  }
+
+  it('T26 keeps the ordinary result and asks us to verify an unconfirmed Travel Rule hold', () => {
+    const patches: Array<Partial<TierInput>> = [{}, { ownershipProofRequested: true }, { addressesCount: 120 }, { verdict: 'low' }]
+    for (const patch of patches) {
+      const plain = recommendTier({ ...base, ...patch })
+      for (const travelRuleConfirmed of [undefined, false]) {
+        const marked = recommendTier({ ...base, ...patch, holdType: 'travel_rule', travelRuleConfirmed })
+        const { flags: markedFlags, ...markedRest } = marked
+        const { flags: plainFlags, ...plainRest } = plain
+        assert.deepEqual(markedRest, plainRest)
+        assert.ok(markedFlags.includes('TRAVEL_RULE_VERIFY_FIRST'))
+        assert.deepEqual(markedFlags.filter((flag) => flag !== 'TRAVEL_RULE_VERIFY_FIRST'), plainFlags)
+      }
+    }
+  })
+
+  it('T27 does not let a Travel Rule hold override a refusal', () => {
+    const stopped = recommendTier({ ...base, verdict: 'cannot_help', holdType: 'travel_rule', travelRuleConfirmed: true })
+    const htx = recommendTier({ ...base, exchange: 'htx', clientCountry: 'GB', holdType: 'travel_rule', travelRuleConfirmed: true })
+    assert.equal(stopped.status, 'refused')
+    assert.equal(stopped.tier, null)
+    assert.equal(stopped.reason, 'NOT_ELIGIBLE')
+    assert.equal(htx.status, 'refused')
+    assert.equal(htx.tier, null)
+    assert.equal(htx.reason, 'HTX_UK_EU_CLIENT')
+  })
+
+  it('T28 lets the Light budget rule win over a confirmed Travel Rule hold', () => {
+    const result = recommendTier({ ...base, addressesCount: 200, holdType: 'travel_rule', travelRuleConfirmed: true })
+    assert.equal(result.tier, 'full')
+    assert.equal(result.lightAllowed, false)
+    assert.equal(result.matched.includes('TRAVEL_RULE_LIGHT'), false)
+  })
+
+  it('T29 leaves an AML hold on the ordinary rules', () => {
+    const result = recommendTier({ ...base, holdType: 'aml', travelRuleConfirmed: true })
+    assert.equal(result.tier, 'light')
+    assert.equal(result.reason, 'LIGHT_DEFAULT')
+    assert.equal(result.flags.includes('TRAVEL_RULE_VERIFY_FIRST'), false)
+  })
+
+  const htxCases: Array<[string, Partial<TierInput>]> = [
+    ['T30a', { exchange: 'htx', clientCountry: 'GB' }],
+    ['T30b', { exchange: 'htx', clientCountry: 'DE' }],
+    ['T30c', { exchange: 'htx', clientCountry: 'uk' }],
+    ['T30d', { exchange: 'htx', clientCountry: 'EL' }],
+    ['T30e', { exchange: 'htx', clientCountry: 'TR', clientNationalities: ['FR'] }],
+    ['T30f', { exchange: 'kraken', htxLinked: true, clientCountry: 'IT' }],
+  ]
+  for (const [id, patch] of htxCases) {
+    it(`${id} refuses an HTX-related case for a UK or EU client`, () => {
+      const result = recommendTier({ ...base, ...patch })
+      assert.equal(result.status, 'refused')
+      assert.equal(result.canOpenCase, false)
+      assert.equal(result.tier, null)
+      assert.equal(result.reason, 'HTX_UK_EU_CLIENT')
+    })
+  }
+
+  for (const [id, country] of [['T31a', 'TR'], ['T31b', 'US'], ['T31c', 'NO']] as const) {
+    it(`${id} keeps the ordinary rules for an HTX client outside the UK and EU`, () => {
+      const result = recommendTier({ ...base, exchange: 'htx', clientCountry: country })
+      assert.equal(result.status, 'ok')
+      assert.equal(result.canOpenCase, true)
+      assert.equal(result.tier, 'light')
+      assert.equal(result.reason, 'LIGHT_DEFAULT')
+      assert.equal(result.flags.includes('HTX_COUNTRY_REQUIRED'), false)
+    })
+  }
+
+  it('T32 asks for a country before an HTX-related case can open', () => {
+    const missing = recommendTier({ ...base, exchange: 'htx' })
+    const unrelated = recommendTier({ ...base, exchange: 'kraken', clientCountry: 'DE' })
+    assert.equal(missing.status, 'blocked_need_country')
+    assert.equal(missing.canOpenCase, false)
+    assert.equal(missing.tier, 'light')
+    assert.ok(missing.flags.includes('HTX_COUNTRY_REQUIRED'))
+    assert.equal(unrelated.status, 'ok')
+    assert.equal(unrelated.canOpenCase, true)
+  })
 })

@@ -21,6 +21,7 @@ export const EXCHANGES = [
   'kucoin',
   'kraken',
   'crypto_com',
+  'htx',
   'other',
 ] as const
 

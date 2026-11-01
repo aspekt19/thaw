@@ -1,8 +1,9 @@
 import { CHAINS, EXCHANGES, ORIGINS, type Chain, type Exchange, type Origin } from './constants.ts'
 import { classifyDeposit } from './address.ts'
-import type { Evidence, FundsSource } from './tier.ts'
+import type { Evidence, FundsSource, HoldType } from './tier.ts'
 
 const FUNDS: readonly FundsSource[] = ['other_exchange', 'own_wallet', 'p2p', 'otc', 'defi', 'unknown']
+const HOLDS: readonly HoldType[] = ['travel_rule', 'aml', 'unknown']
 const EVIDENCE: readonly Evidence[] = ['bank_statements', 'income_docs', 'exchange_export', 'txid_only', 'none']
 
 export type ChanceInput = {
@@ -21,6 +22,10 @@ export type ChanceInput = {
   priorExchangeRejection?: boolean
   priorRoundsCount?: number
   disputedDepositsCount?: number
+  holdType?: HoldType
+  clientCountry?: string
+  clientNationalities?: string[]
+  htxLinked?: boolean
   clientId?: string
   captchaToken?: string
 }
@@ -90,6 +95,12 @@ export function parseChanceInput(body: unknown): ParseResult {
     clientId = row.clientId
   }
   const captchaToken = typeof row.captchaToken === 'string' ? row.captchaToken : undefined
+  const holdType = readEnum(row.holdType, HOLDS) ?? undefined
+  const clientCountry = readCountry(row.clientCountry)
+  if (clientCountry === 'bad') return { ok: false, error: 'Country of residence should be a two-letter code.' }
+  const nationalities = readCountries(row.clientNationalities)
+  if (nationalities === 'bad') return { ok: false, error: 'Citizenships should be two-letter codes.' }
+  // The client cannot confirm a Travel Rule cause. That flag is set only after our own check.
   return {
     ok: true,
     value: {
@@ -108,6 +119,10 @@ export function parseChanceInput(body: unknown): ParseResult {
       priorExchangeRejection: rejected,
       priorRoundsCount,
       disputedDepositsCount,
+      holdType,
+      clientCountry,
+      clientNationalities: nationalities,
+      htxLinked: row.htxLinked === true || row.htxLinked === 'yes',
       clientId,
       captchaToken,
     },
@@ -148,6 +163,28 @@ function documentsFromEvidence(evidence: Evidence[]): boolean | null {
   if (evidence.some((item) => item === 'bank_statements' || item === 'income_docs' || item === 'exchange_export')) return true
   if (evidence.length === 0) return null
   return false
+}
+
+function readCountry(value: unknown): string | undefined | 'bad' {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value !== 'string') return 'bad'
+  const code = value.trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return 'bad'
+  return code
+}
+
+function readCountries(value: unknown): string[] | 'bad' {
+  if (value === undefined || value === null || value === '') return []
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,]+/) : null
+  if (!raw) return 'bad'
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item === 'string' && item.trim() === '') continue
+    const code = readCountry(item)
+    if (code === 'bad') return 'bad'
+    if (code && !out.includes(code)) out.push(code)
+  }
+  return out
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {
