@@ -47,11 +47,13 @@ a { color: inherit; }
   color: var(--ink);
 }
 .brand {
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.04em;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
   text-decoration: none;
 }
+.brand img { height: 40px; width: auto; display: block; }
+.brand-foot img { height: 32px; }
 nav { display: flex; align-items: center; gap: 22px; }
 nav a { text-decoration: none; font-weight: 500; }
 .nav-go {
@@ -428,6 +430,7 @@ textarea { min-height: 140px; }
   .float-a { left: 8px; }
   .float-b { right: 8px; }
   nav a:not(.nav-go) { display: none; }
+  .brand img { height: 34px; }
   .band { padding: 64px 0; }
   .window-body { min-height: 220px; }
 }
