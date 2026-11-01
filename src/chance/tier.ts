@@ -24,9 +24,8 @@ export interface TierInput {
   // Travel Rule (Yura decision 2026-11-01 15:48): sell Light, but only after we checked the cause.
   holdType?: HoldType;                    // what the hold looks like (from notice classification / form)
   travelRuleConfirmed?: boolean;          // true only after OUR check that the cause really is Travel Rule
-  // HTX (Yura decision 2026-11-01 15:49): decline only for UK/EU clients.
-  clientCountry?: string;                 // ISO-2 country of residence, e.g. "DE", "GB", "TR", "US"
-  clientNationalities?: string[];         // ISO-2 citizenships (EU/UK rules also cover nationals abroad)
+  // HTX (Yura decisions 2026-11-01 15:49 and 15:58): decline only for clients living in the UK/EU.
+  clientCountry?: string;                 // ISO-2 country of RESIDENCE, e.g. "DE", "GB", "TR", "US" (citizenship not used)
   htxLinked?: boolean;                    // funds came from / went to HTX (exchange may be another one)
 }
 
@@ -50,7 +49,7 @@ export interface TierConfig {
   costPerAddress: { light: number; full: number }; // USD, calibrate on real runs
   price: { light: number; full: number };          // 49, 79
   maxCostShare: number;         // 0.8 (margin >= 20%)
-  htxDeclineCountries: string[];// ISO-2: EU member states + GB (Yura decision 2026-11-01 15:49)
+  htxDeclineCountries: string[];// ISO-2: EU-27 + GB only, no NO/IS/LI/CH (Yura decisions 2026-11-01 15:49, 15:58)
 }
 
 // EU member states (27) + United Kingdom, ISO 3166-1 alpha-2. Greece is "GR" (EU uses "EL", normalised below).
@@ -118,11 +117,9 @@ const iso2 = (x: string) => { const u = x.trim().toUpperCase(); return u === "UK
 export function isHtxRelated(i: TierInput): boolean {
   return i.exchange === "htx" || i.htxLinked === true;
 }
-// UK/EU client: residence or any citizenship in the list (EU Reg. 833/2014 art. 13, UK SAMLA 2018 s.21).
+// UK/EU client = country of residence in the list. Citizenship is NOT used (Yura decision 2026-11-01 15:58).
 export function isHtxDeclinedClient(i: TierInput, c: TierConfig = DEFAULT_CONFIG): boolean {
-  const list = c.htxDeclineCountries.map(iso2);
-  const countries = [i.clientCountry, ...(i.clientNationalities ?? [])].filter((x): x is string => !!x).map(iso2);
-  return countries.some(x => list.includes(x));
+  return !!i.clientCountry && c.htxDeclineCountries.map(iso2).includes(iso2(i.clientCountry));
 }
 
 export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): TierResult {
@@ -164,7 +161,8 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
   ];
   const fullHits = rules.filter(([, hit]) => hit).map(([id]) => id);
   const lightAllowed = !fullHits.includes("LIGHT_OVER_BUDGET");
-  // R_TR: confirmed Travel Rule hold -> Light, wins over R0..R7. R8 (margin >= 20%) still wins over R_TR.
+  // R_TR: confirmed Travel Rule hold -> Light, wins over R0..R7. R8 (Light cost > cap) wins over R_TR -> Full
+  // (Yura decision 2026-11-01 15:58).
   const trLight = trConfirmed && lightAllowed;
   const matched: RuleId[] = trLight ? ["TRAVEL_RULE_LIGHT", ...fullHits] : fullHits;
   const tier: Tier = trLight || !fullHits.length ? "light" : "full";

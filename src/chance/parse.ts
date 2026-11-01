@@ -24,7 +24,6 @@ export type ChanceInput = {
   disputedDepositsCount?: number
   holdType?: HoldType
   clientCountry?: string
-  clientNationalities?: string[]
   htxLinked?: boolean
   clientId?: string
   captchaToken?: string
@@ -119,7 +118,6 @@ export function parseChanceInput(body: unknown): ParseResult {
       disputedDepositsCount,
       holdType,
       clientCountry,
-      clientNationalities: [],
       htxLinked: row.htxLinked === true || row.htxLinked === 'yes',
       clientId,
       captchaToken,

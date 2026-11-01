@@ -325,7 +325,6 @@ function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLook
       // A Travel Rule cause is confirmed only by our own check. The form cannot set this.
       travelRuleConfirmed: false,
       clientCountry: input.clientCountry,
-      clientNationalities: [],
       htxLinked: input.htxLinked,
     },
     PRODUCT_TIER_CONFIG,

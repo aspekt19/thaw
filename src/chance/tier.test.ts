@@ -251,11 +251,10 @@ describe('tier recommendation', () => {
     ['T30b', { exchange: 'htx', clientCountry: 'DE' }],
     ['T30c', { exchange: 'htx', clientCountry: 'uk' }],
     ['T30d', { exchange: 'htx', clientCountry: 'EL' }],
-    ['T30e', { exchange: 'htx', clientCountry: 'TR', clientNationalities: ['FR'] }],
-    ['T30f', { exchange: 'kraken', htxLinked: true, clientCountry: 'IT' }],
+    ['T30e', { exchange: 'kraken', htxLinked: true, clientCountry: 'IT' }],
   ]
   for (const [id, patch] of htxCases) {
-    it(`${id} refuses an HTX-related case for a UK or EU client`, () => {
+    it(`${id} refuses an HTX-related case for a UK or EU resident`, () => {
       const result = recommendTier({ ...base, ...patch })
       assert.equal(result.status, 'refused')
       assert.equal(result.canOpenCase, false)
@@ -264,14 +263,27 @@ describe('tier recommendation', () => {
     })
   }
 
-  for (const [id, country] of [['T31a', 'TR'], ['T31b', 'US'], ['T31c', 'NO']] as const) {
-    it(`${id} keeps the ordinary rules for an HTX client outside the UK and EU`, () => {
+  for (const [id, country] of [['T31a', 'TR'], ['T31b', 'US'], ['T31c', 'NO'], ['T31d', 'CH']] as const) {
+    it(`${id} keeps the ordinary rules for an HTX client living outside the UK and EU`, () => {
       const result = recommendTier({ ...base, exchange: 'htx', clientCountry: country })
       assert.equal(result.status, 'ok')
       assert.equal(result.canOpenCase, true)
       assert.equal(result.tier, 'light')
       assert.equal(result.reason, 'LIGHT_DEFAULT')
       assert.equal(result.flags.includes('HTX_COUNTRY_REQUIRED'), false)
+    })
+  }
+
+  for (const [id, patch] of [
+    ['T33a', { exchange: 'htx', clientCountry: 'TR', clientNationalities: ['GB'] }],
+    ['T33b', { exchange: 'htx', clientCountry: 'AE', clientNationalities: ['FR'] }],
+    ['T33c', { exchange: 'kraken', htxLinked: true, clientCountry: 'US', clientNationalities: ['DE'] }],
+  ] as Array<[string, Record<string, unknown>]>) {
+    it(`${id} does not refuse an HTX case because of citizenship`, () => {
+      const result = recommendTier({ ...base, ...patch } as TierInput)
+      assert.equal(result.status, 'ok')
+      assert.equal(result.canOpenCase, true)
+      assert.notEqual(result.reason, 'HTX_UK_EU_CLIENT')
     })
   }
 

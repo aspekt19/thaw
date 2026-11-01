@@ -323,7 +323,6 @@ function payload(form: HTMLFormElement): Record<string, unknown> {
   for (const [key, list] of lists) out[key] = list
   if (!out.fundsSources) out.fundsSources = []
   if (!out.evidence) out.evidence = []
-  out.clientNationalities = []
   if (!out.clientCountry) delete out.clientCountry
   if (!out.priorExchangeRejection) out.priorExchangeRejection = false
   if (!out.htxLinked) out.htxLinked = false
