@@ -1,3 +1,8 @@
+import '@fontsource/geist-sans/latin-400.css'
+import '@fontsource/geist-sans/latin-500.css'
+import '@fontsource/geist-sans/latin-600.css'
+import '@fontsource/geist-sans/latin-700.css'
+import '@fontsource/geist-mono/latin-500.css'
 import { EXPLAIN, RAISE, REASON } from '../chance/rules.ts'
 
 const REASON_EN: Record<string, string> = {
@@ -196,14 +201,9 @@ function setTier(tier: 'light' | 'full'): void {
   })
   const price = tier === 'full' ? 79 : 49
   const remainder = price - 1
-  const figure = document.querySelector('#remainder-figure')
   const line = document.querySelector('#remainder-line')
-  const sample = document.querySelector('#sample-figure')
-  if (figure) figure.textContent = `$${remainder}.00`
-  if (line) line.textContent = `$${price} file, minus the $1 check. A live invoice adds under $0.10 so two open invoices never match.`
-  if (sample) sample.textContent = `${remainder}.000000 USDC`
-  nudge(figure)
-  nudge(sample)
+  if (line) line.textContent = `$${price} file, minus the $1 check, leaves $${remainder}.00 before the unique fraction.`
+  nudge(line)
 }
 
 async function sendCheck(): Promise<void> {
@@ -682,3 +682,42 @@ function rise(): void {
 }
 
 rise()
+startDemo()
+
+const BEATS = ['notice', 'trace', 'rules', 'verdict', 'papers'] as const
+
+function startDemo(): void {
+  const root = document.querySelector('#demo')
+  const typed = document.querySelector('#demo-type')
+  if (!root || !typed) return
+  const beats = Array.from(root.querySelectorAll<HTMLElement>('.beat'))
+  const dots = Array.from(root.querySelectorAll<HTMLElement>('.beat-dots i'))
+  const full = typed.textContent ?? ''
+  if (!prefersMotion()) return
+  let index = 0
+  let timer = 0
+  const showBeat = (next: number) => {
+    beats.forEach((beat, i) => beat.classList.toggle('on', i === next))
+    dots.forEach((dot, i) => dot.classList.toggle('on', i === next))
+  }
+  const typeNotice = () => {
+    typed.textContent = ''
+    let n = 0
+    const step = () => {
+      n += 1
+      typed.textContent = full.slice(0, n)
+      if (n < full.length) timer = window.setTimeout(step, 28)
+      else timer = window.setTimeout(advance, 900)
+    }
+    step()
+  }
+  const advance = () => {
+    index = (index + 1) % BEATS.length
+    showBeat(index)
+    if (BEATS[index] === 'notice') typeNotice()
+    else timer = window.setTimeout(advance, 2400)
+  }
+  showBeat(0)
+  typeNotice()
+  window.addEventListener('pagehide', () => window.clearTimeout(timer))
+}

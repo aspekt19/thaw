@@ -5,15 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Thaw. Papers for a frozen withdrawal</title>
     <meta name="description" content="Thaw prepares source-of-funds papers after an exchange freezes a withdrawal. A paid chance check starts at $1 in USDC and is credited toward the file.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/src/web/style.css">
   </head>
   <body>
     <header class="bar">
       <a class="brand" href="#top">Thaw</a>
       <nav>
+        <a href="#how">The path</a>
         <a href="#prices">Prices</a>
         <a href="#questions">Questions</a>
         <a class="nav-go cta" href="#check">Check the chance</a>
@@ -22,179 +20,194 @@
 
     <div data-view="home" id="top">
       <section class="hero">
-        <div class="hero-copy">
-          <h1>
-            <span class="mask"><span class="line">Your withdrawal</span></span>
-            <span class="mask"><span class="line late">is frozen.</span></span>
-          </h1>
-          <p class="support" data-rise>Thaw writes the source-of-funds papers an exchange asks for after an AML freeze. The exchange decides. We do not.</p>
-          <a class="action cta" href="#check" data-rise>Check the chance</a>
+        <div class="mesh" aria-hidden="true">
+          <span class="blob blob-a"></span>
+          <span class="blob blob-b"></span>
+          <span class="blob blob-c"></span>
         </div>
-        <div class="hero-stage">
-          <div class="fragment" data-ui data-rise id="remainder">
-            <p class="frag-title">Remainder after the $1 check</p>
-            <div class="tier-row" role="group" aria-label="File price">
-              <button type="button" class="tier on" data-tier="light">Light file, $49</button>
-              <button type="button" class="tier" data-tier="full">Full file, $79</button>
+        <div class="dots" aria-hidden="true"></div>
+        <div class="grain" aria-hidden="true"></div>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Document preparation</p>
+            <h1>
+              <span class="mask"><span class="line">Your withdrawal</span></span>
+              <span class="mask"><span class="line late">is <em>frozen.</em></span></span>
+            </h1>
+            <p class="lead">Thaw writes the source-of-funds papers an exchange asks for after an AML freeze. The exchange decides. We do not.</p>
+            <div class="hero-actions">
+              <a class="action cta" href="#check">Check the chance</a>
+              <a class="ghost" href="#how">See the path</a>
             </div>
-            <p class="frag-figure" id="remainder-figure">$48.00</p>
-            <p class="frag-line" id="remainder-line">$49 file, minus the $1 check. A live invoice adds under $0.10 so two open invoices never match.</p>
-            <dl class="frag-facts">
-              <div><dt>Network</dt><dd>Base</dd></div>
-              <div><dt>Token</dt><dd>USDC</dd></div>
-              <div><dt>Contract</dt><dd>0x833589fcd6edb6e08f4c7c32d4f71b54bda02913</dd></div>
-            </dl>
-            <p class="frag-note">The wallet address is on your invoice. We never ask for a private key or a seed phrase.</p>
+            <ul class="chips">
+              <li>From $1, credited</li>
+              <li>Not legal advice</li>
+              <li>No keys, ever</li>
+            </ul>
+          </div>
+          <div class="stage-wrap">
+            <div class="float float-a">$1 credited</div>
+            <div class="float float-b">Sample only</div>
+            <div class="window" id="demo" aria-live="polite">
+              <div class="window-bar">
+                <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="window-title">Thaw sample check</span>
+                <span class="sample-pill">Sample</span>
+              </div>
+              <div class="window-body">
+                <article class="beat on" data-beat="notice">
+                  <p class="beat-kicker">Exchange notice</p>
+                  <p class="beat-main" id="demo-type">Please provide source of funds for this deposit.</p>
+                  <p class="beat-foot">Sample wording. Not from a real account.</p>
+                </article>
+                <article class="beat" data-beat="trace">
+                  <p class="beat-kicker">Deposit trace</p>
+                  <p class="beat-main mono">0x1111…1111</p>
+                  <ul class="beat-chips"><li>TRON</li><li>One page of history</li><li>Placeholder address</li></ul>
+                  <p class="beat-foot">Public chain data. This address is not a real payer.</p>
+                </article>
+                <article class="beat" data-beat="rules">
+                  <p class="beat-kicker">Rule check</p>
+                  <p class="beat-main">Ordinary source-of-funds wording</p>
+                  <ul class="beat-chips"><li>No sanctions phrase</li><li>No police hold</li><li>No final closure</li></ul>
+                  <p class="beat-foot">The rules decide. This is a sample of the checks, not a verdict.</p>
+                </article>
+                <article class="beat" data-beat="verdict">
+                  <p class="beat-kicker">Chance verdict</p>
+                  <p class="beat-main">Medium</p>
+                  <ul class="beat-chips"><li>Sample level</li><li>Not a promise</li></ul>
+                  <p class="beat-foot">A real check returns high, medium, low, or declined.</p>
+                </article>
+                <article class="beat" data-beat="papers">
+                  <p class="beat-kicker">Case papers</p>
+                  <p class="beat-main mono">$48.00 remainder</p>
+                  <ul class="beat-chips"><li>$49 light file</li><li>$1 already paid</li></ul>
+                  <p class="beat-foot">Sample arithmetic. The exchange still decides.</p>
+                </article>
+              </div>
+              <div class="beat-dots" aria-hidden="true">
+                <i class="on"></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
           </div>
         </div>
+        <div class="hero-fade" aria-hidden="true"></div>
       </section>
 
-      <section class="path" id="path">
-        <h2 data-rise>From the check to the file</h2>
-        <div class="flow" data-rise="photo">
-          <div class="flow-rail" aria-hidden="true"><span class="flow-dot"></span></div>
-          <ol class="flow-steps">
-            <li>
-              <span class="flow-mark" aria-hidden="true"></span>
+      <section class="band" id="how">
+        <div class="wrap">
+          <h2 data-rise>Five beats, then a file</h2>
+          <ol class="path">
+            <li data-rise>
               <strong>Pay the check</strong>
-              <span>$1 in USDC, plus a fraction under $0.10. The figure 1.00 USDC here is a sample, not a live invoice.</span>
+              <span>At least $1 in USDC on Base, plus a unique fraction so two open invoices never match.</span>
             </li>
-            <li>
-              <span class="flow-mark" aria-hidden="true"></span>
+            <li data-rise>
               <strong>Trace the deposit</strong>
-              <span>Public chain data on TRON, Ethereum, or Arbitrum. Sample address 0x1111…1111.</span>
+              <span>We read public history on TRON, Ethereum, or Arbitrum. One page, not the whole chain.</span>
             </li>
-            <li>
-              <span class="flow-mark" aria-hidden="true"></span>
+            <li data-rise>
               <strong>Read the notice</strong>
               <span>Rules look for sanctions, a police or court hold, theft, or an ordinary source-of-funds check.</span>
             </li>
-            <li>
-              <span class="flow-mark" aria-hidden="true"></span>
+            <li data-rise>
               <strong>Chance verdict</strong>
-              <span>High, medium, low, or declined. This row is the path, not a result for a real case.</span>
+              <span>High, medium, low, or declined, with the reasons. We do not promise a release.</span>
             </li>
-            <li>
-              <span class="flow-mark" aria-hidden="true"></span>
+            <li data-rise>
               <strong>Case papers</strong>
-              <span>Light at $49 or full at $79, after the check is credited. The exchange still decides.</span>
+              <span>On a high or medium chance, the check is credited toward a $49 or $79 file.</span>
             </li>
           </ol>
         </div>
       </section>
 
-      <section class="how" id="how">
-        <div class="how-grid">
-          <figure class="shot" data-rise="photo">
-            <img src="/pictures/patterson-s-general-store-ledger.jpg" width="1400" height="2053" alt="Handwritten 1910 ledger page from Patterson's General Store, with item lines and a closing balance.">
-            <figcaption>A store ledger, Patterson's General Store, 1910. Public domain, Wikimedia Commons.</figcaption>
-          </figure>
-          <div class="how-copy">
-            <h2 data-rise>How a check works</h2>
-            <p data-rise><strong>To begin,</strong> you paste the exchange notice, the amount, the date, and the deposit address or transaction id. TRON, Ethereum, and Arbitrum only.</p>
-            <p data-rise><strong>Then you pay</strong> at least $1 in USDC, straight to our wallet on Base. The invoice amount is unique. A round dollar will not match.</p>
-            <p data-rise><strong>After the chain confirms it,</strong> rules read the notice and the public transfer. You get a chance level, the reasons, and what would raise the chance. That $1 is credited if you open a file on the same check.</p>
-            <p data-rise><strong>We decline</strong> sanctions, a police or court hold, theft, and a final closure. This is document preparation, not legal advice, and not a promise the withdrawal will be released.</p>
-            <div class="fragment slim" data-ui data-rise>
-              <p class="frag-title">What the invoice shows</p>
-              <p class="frag-figure" id="sample-figure">48.000000 USDC</p>
-              <p class="frag-line">Status: waiting for that exact transfer.</p>
-              <p class="frag-note">Your invoice will not end in zeros. The extra fraction is how we tell one payment from another.</p>
-            </div>
+      <section class="band paper" id="prices">
+        <div class="wrap">
+          <h2 data-rise>What you pay</h2>
+          <div class="prices" id="remainder">
+            <article data-rise>
+              <h3>Chance check</h3>
+              <p class="sum">$1</p>
+              <p>USDC on Base before the check runs. Credited toward a file on the same check. The live invoice adds a fraction under $0.10.</p>
+              <a class="action cta" href="#check">Check the chance</a>
+            </article>
+            <article class="wash" data-rise>
+              <h3>Light file</h3>
+              <p class="sum" id="remainder-figure">$49</p>
+              <p id="remainder-line">Opens after a high or medium chance. You pay $49 minus the check you already paid.</p>
+              <button type="button" class="tier on" data-tier="light">Light, $49</button>
+              <button type="button" class="action ghost cta" data-pick="light">See the $48 remainder</button>
+            </article>
+            <article data-rise>
+              <h3>Full file</h3>
+              <p class="sum" id="sample-figure">$79</p>
+              <p>Same rule, higher price. We do not publish a difference in the papers beyond the price.</p>
+              <button type="button" class="tier" data-tier="full">Full, $79</button>
+              <button type="button" class="action ghost cta" data-pick="full">See the $78 remainder</button>
+            </article>
           </div>
         </div>
       </section>
 
-      <section class="prices" id="prices">
-        <h2 data-rise>What you pay</h2>
-        <div class="plan-row">
-          <article data-rise>
-            <h3>Chance check</h3>
-            <p class="sum">$1</p>
-            <p>USDC on Base, before the check runs. Credited toward a file on the same check. The live invoice is this price plus a unique fraction under $0.10.</p>
-            <a class="action cta" href="#check">Check the chance</a>
-          </article>
-          <article class="tint" data-rise>
-            <h3>Light file</h3>
-            <p class="sum">$49</p>
-            <p>Opens only after a high or medium chance. You pay $49 minus the check you already paid. Same USDC invoice, checked on chain.</p>
-            <button type="button" class="action ghost cta" data-pick="light">See the $48 remainder</button>
-          </article>
-          <article data-rise>
-            <h3>Full file</h3>
-            <p class="sum">$79</p>
-            <p>Same rule, higher price. You pay $79 minus the check. We do not publish a difference in the papers beyond the price.</p>
-            <button type="button" class="action ghost cta" data-pick="full">See the $78 remainder</button>
-          </article>
-        </div>
-      </section>
-
-      <section class="band">
-        <figure class="shot wide" data-rise="photo">
-          <div class="drift-frame">
-            <img class="drift" src="/pictures/patterson-s-general-store-ledger-2.jpg" width="1400" height="2053" alt="Handwritten ledger page headed Prof L R Wilson, with daily purchases and a balance.">
+      <section class="band" id="limits">
+        <div class="wrap split">
+          <div data-rise>
+            <h2>What we will not take</h2>
+            <p>This is document preparation, not a law practice. A police or court hold needs a lawyer. Our papers do not replace one.</p>
           </div>
-          <figcaption>Another page of the same 1910 store ledger, headed Prof L R Wilson.</figcaption>
-        </figure>
-      </section>
-
-      <section class="questions" id="questions">
-        <h2 data-rise>Questions</h2>
-        <div class="ask">
-          <details name="faq" data-rise="row">
-            <summary>What do you actually prepare? <span class="plus" aria-hidden="true"></span></summary>
-            <p>A source-of-funds file for a regular user whose exchange froze an account or a withdrawal after an AML check. The exchange still makes the decision.</p>
-          </details>
-          <details name="faq" data-rise="row">
-            <summary>Will this release the withdrawal? <span class="plus" aria-hidden="true"></span></summary>
-            <p>No. We do not promise that. Anyone who sells a guaranteed release is not us.</p>
-          </details>
-          <details name="faq" data-rise="row">
-            <summary>What does the dollar buy? <span class="plus" aria-hidden="true"></span></summary>
-            <p>A chance level from the notice and the public chain data, plus the reasons. The fee is credited if you later open a light or full file on that same check.</p>
-          </details>
-          <details name="faq" data-rise="row">
-            <summary>Which cases do you refuse? <span class="plus" aria-hidden="true"></span></summary>
-            <p>Sanctions, a police or court hold, theft, and a notice that the account is finally closed. A low chance also does not open a file.</p>
-          </details>
-          <details name="faq" data-rise="row">
-            <summary>Do you want my keys? <span class="plus" aria-hidden="true"></span></summary>
-            <p>No. Never send a private key or a seed phrase. Payment is a normal USDC transfer from your own wallet to the address on the invoice.</p>
-          </details>
-          <details name="faq" data-rise="row">
-            <summary>Is this legal advice? <span class="plus" aria-hidden="true"></span></summary>
-            <p>No. It is document preparation. A police or court hold needs a lawyer. Our papers do not replace one.</p>
-          </details>
+          <ul class="refuse" data-rise>
+            <li>Sanctions language in the notice</li>
+            <li>A police or court hold</li>
+            <li>Theft, or a victim report</li>
+            <li>A notice that the account is finally closed</li>
+            <li>A low chance. We will not open a file.</li>
+          </ul>
         </div>
       </section>
 
-      <section class="book">
-        <h2 data-rise>The file is paper, not a ruling</h2>
-        <figure class="shot" data-rise="photo">
-          <img src="/pictures/account-book-cover.jpg" width="1200" height="1600" alt="Marbled paper cover of an account book, with a handwritten title on the front.">
-          <figcaption>Account book cover by John Carlin, 1835–56. Public domain, The Metropolitan Museum of Art.</figcaption>
-        </figure>
-        <div data-rise>
-          <p>You keep your wallet. We receive one USDC transfer for the check, and a second for the remainder if you open a file. Both are verified on Base. Neither one gives us your keys.</p>
-          <p><a href="#terms">Draft terms</a> and <a href="#privacy">draft privacy</a> are placeholders, marked as drafts.</p>
+      <section class="band paper" id="questions">
+        <div class="wrap split">
+          <h2 data-rise>Questions</h2>
+          <div class="ask">
+            <details data-rise>
+              <summary>What do you actually prepare? <span class="plus" aria-hidden="true"></span></summary>
+              <p>A source-of-funds file for a person whose exchange froze an account or a withdrawal after an AML check. The exchange still makes the decision.</p>
+            </details>
+            <details data-rise>
+              <summary>Will this release the withdrawal? <span class="plus" aria-hidden="true"></span></summary>
+              <p>No. We do not promise that. Anyone who sells a guaranteed release is not us.</p>
+            </details>
+            <details data-rise>
+              <summary>What does the dollar buy? <span class="plus" aria-hidden="true"></span></summary>
+              <p>A chance level from the notice and the public chain data, plus the reasons. The fee is credited if you open a light or full file on that same check.</p>
+            </details>
+            <details data-rise>
+              <summary>Do you want my keys? <span class="plus" aria-hidden="true"></span></summary>
+              <p>No. Never send a private key or a seed phrase. Payment is a normal USDC transfer from your wallet to the address on the invoice.</p>
+            </details>
+          </div>
         </div>
       </section>
 
-      <footer class="colophon">
-        <p class="credits">Pictures: <a href="https://commons.wikimedia.org/wiki/File:Patterson%27s_General_Store_Ledger_-_DPLA_-_0079e562a497df98da2b2bf6a5740d22_(page_703).jpg">Patterson's General Store Ledger</a>, public domain, via Wikimedia Commons; <a href="https://commons.wikimedia.org/wiki/File:Patterson%27s_General_Store_Ledger_-_DPLA_-_0079e562a497df98da2b2bf6a5740d22_(page_752).jpg">a second page of the same ledger</a>, public domain, via Wikimedia Commons; <a href="https://www.metmuseum.org/art/collection/search/20365">Account Book Ledger</a> by John Carlin, 1835–56, <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>, via The Metropolitan Museum of Art.</p>
-        <div class="foot-line">
-          <p>Document preparation</p>
-          <p class="foot-links"><a href="#check">Check</a> <a href="#prices">Prices</a> <a href="#questions">Questions</a> <a href="#terms">Terms</a> <a href="#privacy">Privacy</a></p>
-          <p>2026</p>
+      <section class="close">
+        <div class="mesh" aria-hidden="true">
+          <span class="blob blob-a"></span>
+          <span class="blob blob-b"></span>
         </div>
-      </footer>
+        <div class="wrap close-copy">
+          <h2>Start with the check.</h2>
+          <p>One USDC invoice on Base. If the chance is high or medium, that payment comes off the file.</p>
+          <a class="action cta light" href="#check">Check the chance</a>
+        </div>
+      </section>
     </div>
 
-    <div data-view="check" hidden>
+    <div data-view="check" class="sub" hidden>
       <section class="sheet-page">
         <h1>The chance check</h1>
         <p class="support">From $1 in USDC on Base, credited toward a $49 or $79 file on this same check. Paste the notice as you received it. Leave out keys and seed phrases.</p>
-        <form id="check-form" action="/api/check-orders" method="post">
+        <form id="check-form" class="panel" action="/api/check-orders" method="post">
           <div class="field">
             <label for="exchange">Exchange</label>
             <select id="exchange" name="exchange" required>
@@ -272,19 +285,16 @@
       </section>
     </div>
 
-    <div data-view="invoice" hidden>
+    <div data-view="invoice" class="sub" hidden>
       <section class="sheet-page" id="invoice-root" aria-live="polite"></section>
     </div>
-
-    <div data-view="result" hidden>
+    <div data-view="result" class="sub" hidden>
       <section class="sheet-page" id="result-root" aria-live="polite"></section>
     </div>
-
-    <div data-view="case" hidden>
+    <div data-view="case" class="sub" hidden>
       <section class="sheet-page" id="case-root" aria-live="polite"></section>
     </div>
-
-    <div data-view="terms" hidden>
+    <div data-view="terms" class="sub" hidden>
       <section class="sheet-page prose">
         <h1>Draft terms</h1>
         <p>This page is a draft placeholder. It is not a finished contract.</p>
@@ -294,8 +304,7 @@
         <p>You pay from your own wallet. We never ask for a private key or a seed phrase.</p>
       </section>
     </div>
-
-    <div data-view="privacy" hidden>
+    <div data-view="privacy" class="sub" hidden>
       <section class="sheet-page prose">
         <h1>Draft privacy</h1>
         <p>This page is a draft placeholder. It is not a finished privacy notice.</p>
@@ -306,6 +315,11 @@
       </section>
     </div>
 
+    <footer class="colophon">
+      <p>Document preparation</p>
+      <p class="foot-links"><a href="#check">Check</a> <a href="#prices">Prices</a> <a href="#questions">Questions</a> <a href="#terms">Terms</a> <a href="#privacy">Privacy</a></p>
+      <p>2026</p>
+    </footer>
     <script type="module" src="/src/web/main.ts"></script>
   </body>
 </html>
