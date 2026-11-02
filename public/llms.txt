@@ -1,0 +1,19 @@
+# Thaw
+
+Thaw prepares documents for a person whose exchange froze an account or a withdrawal after a compliance check. It does not promise that the exchange will release the funds. It is not legal advice. It declines sanctions cases.
+
+## Chance check
+
+POST /api/check-orders creates a 1 USDC invoice on Base. The client sends the exact amount, then POST /api/check-orders/{id}/confirm with txHash. The result is high, medium, low, or declined.
+
+## Case
+
+POST /api/cases opens a light file (49 USD) or a full file (79 USD). The check fee is credited. The response includes a caseToken once. GET /api/cases/{id} requires that token. The appeal draft is hidden until a reviewer marks it ready.
+
+## MCP
+
+GET /mcp returns a JSON description. POST /mcp is stateless streamable HTTP.
+Tools: check_chance, thaw_open_case, thaw_get_case.
+A case read needs the case token via Authorization: Bearer or the caseToken argument. x-api-key is also accepted as a header for clients that only send that header; the case token is the secret that matters.
+
+Payment is off until the operator sets a USDC address. Do not send funds to an empty invoice.

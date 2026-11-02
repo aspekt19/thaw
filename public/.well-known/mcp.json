@@ -1,0 +1,6 @@
+{
+  "name": "thaw",
+  "transport": "streamable-http",
+  "endpoint": "/mcp",
+  "tools": ["check_chance", "thaw_open_case", "thaw_get_case"]
+}

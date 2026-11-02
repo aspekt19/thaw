@@ -6,6 +6,7 @@ import { defaultLimitConfig } from './chance/limits.ts'
 import { parseChanceInput, type ChanceInput } from './chance/parse.ts'
 import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
+import { mcpFetch } from './mcp/server.ts'
 import { runPaidCase } from './case/pipeline.ts'
 import { createHttpKiteExecutor, createRunnerExecutor } from './kite/executor.ts'
 import { DEFAULT_DAILY_CAP_MICRO } from './kite/guard.ts'
@@ -661,8 +662,9 @@ function publicWork(row: CaseRow): Record<string, unknown> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     try {
+      if (new URL(request.url).pathname === '/mcp') return mcpFetch(request, env, ctx)
       const api = await handleApi(request, env)
       if (api) return api
       return env.ASSETS.fetch(request)

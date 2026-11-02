@@ -13,7 +13,7 @@ enabled = true
 [assets]
 directory = "./dist"
 binding = "ASSETS"
-run_worker_first = ["/api/*", "/v1/*"]
+run_worker_first = ["/api/*", "/v1/*", "/mcp"]
 
 [[d1_databases]]
 binding = "DB"
