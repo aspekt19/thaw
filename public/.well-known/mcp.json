@@ -1,5 +1,6 @@
 {
   "name": "thaw",
+  "description": "Document preparation for an exchange hold. The chance check is from $1 and is credited toward the case.",
   "transport": "streamable-http",
   "endpoint": "/mcp",
   "tools": ["check_chance", "thaw_open_case", "thaw_get_case"]

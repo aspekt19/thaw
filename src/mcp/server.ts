@@ -67,7 +67,7 @@ function buildServer(env: Env): McpServer {
   add(
     'check_chance',
     {
-      description: 'Chance check for 1 USDC on Base. Step 1 omits orderId and returns an invoice. Step 2 sends orderId and txHash. Ask the human before paying. Never promise that the exchange will release the withdrawal.',
+      description: 'Chance check from $1, credited toward the case. Step 1 omits orderId and returns an invoice. Step 2 sends orderId and txHash. Ask the human before paying. Never promise that the exchange will release the withdrawal.',
       inputSchema: {
         orderId: z.string().optional(),
         txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
@@ -93,7 +93,7 @@ function buildServer(env: Env): McpServer {
         return textResult(payload, status)
       }
       const { status, payload } = await callApi(new Request('https://thaw.local/api/check-orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) }), env)
-      return textResult(payload, status, { next_action: 'Send the exact USDC amount on Base, then call check_chance with orderId and txHash. Ask the human before paying.' })
+      return textResult(payload, status, { next_action: 'The check is from $1 and is credited toward the case. Pay the amount on the invoice, then call check_chance with orderId and txHash. Ask the human before paying.' })
     },
   )
   add(

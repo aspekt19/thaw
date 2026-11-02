@@ -20,11 +20,11 @@ export function withCors(response: Response): Response {
 export function mcpDescription(origin: string): Record<string, unknown> {
   return {
     name: 'thaw',
-    description: 'Document preparation for an exchange hold. The check is 1 USDC on Base. A light file is 49 USD and a full file is 79 USD. The check fee is credited. We do not promise that a withdrawal will be released.',
+    description: 'Document preparation for an exchange hold. The chance check is from $1 and is credited toward the case. A light file is 49 USD and a full file is 79 USD. We do not promise that a withdrawal will be released.',
     transport: 'streamable-http',
     endpoint: `${origin}/mcp`,
     tools: [
-      { name: 'check_chance', price: '1 USDC on Base', steps: ['Call without orderId to get an invoice.', 'Send that exact amount.', 'Call again with orderId and txHash.'] },
+      { name: 'check_chance', price: 'from $1, credited toward the case', steps: ['Call without orderId to get an invoice.', 'Pay the amount on the invoice.', 'Call again with orderId and txHash.'] },
       { name: 'thaw_open_case', price: 'Light 49 USD or Full 79 USD, minus the check', steps: ['Ask the human before paying.', 'Call with orderId and tier.', 'Call again with caseId and txHash.'] },
       { name: 'thaw_get_case', auth: 'case token from thaw_open_case, as Authorization Bearer or the caseToken field' },
     ],

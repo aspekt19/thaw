@@ -1,9 +1,9 @@
 {
   "name": "Thaw",
-  "description": "Document preparation for an exchange hold. The exchange still decides. We do not promise a release.",
+  "description": "Document preparation for an exchange hold. The chance check is from $1 and is credited toward the case. The exchange still decides. We do not promise a release.",
   "version": "0.1.0",
   "skills": [
-    { "id": "check_chance", "name": "Chance check", "description": "Read a notice and public chain data. 1 USDC on Base." },
+    { "id": "check_chance", "name": "Chance check", "description": "Read a notice and public chain data. From $1, credited toward the case." },
     { "id": "thaw_open_case", "name": "Open a file", "description": "Light 49 USD or Full 79 USD, with the check credited." },
     { "id": "thaw_get_case", "name": "Read a case", "description": "Requires the case token issued when the case was opened." }
   ],

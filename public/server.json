@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aspekt19/thaw",
-  "description": "Document preparation for an exchange hold. Does not promise a release.",
+  "description": "Document preparation for an exchange hold. The chance check is from $1 and is credited toward the case. Does not promise a release.",
   "version": "0.1.0",
   "remotes": [
     {

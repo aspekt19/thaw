@@ -4,7 +4,7 @@ Thaw prepares documents for a person whose exchange froze an account or a withdr
 
 ## Chance check
 
-POST /api/check-orders creates a 1 USDC invoice on Base. The client sends the exact amount, then POST /api/check-orders/{id}/confirm with txHash. The result is high, medium, low, or declined.
+POST /api/check-orders creates an invoice. The chance check is from $1 and is credited toward the case. The client pays the amount on the invoice, then POST /api/check-orders/{id}/confirm with txHash. The result is high, medium, low, or declined.
 
 ## Case
 
