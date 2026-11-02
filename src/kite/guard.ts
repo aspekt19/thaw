@@ -34,6 +34,13 @@ export type KiteDeny =
   | 'over_case_cap'
   | 'over_daily_cap'
 
+/** Refuse a live charge that is both more than 10% and more than $0.001 above the catalog quote. */
+export function chargeAllowed(quotedMicro: number, chargedMicro: number): boolean {
+  const over = chargedMicro - quotedMicro
+  if (over <= 0) return true
+  return !(over > quotedMicro * 0.1 && over > 1_000)
+}
+
 export function endpointAllowed(method: string, url: string): boolean {
   const actual = normalizeEndpoint(method, url)
   if (!actual) return false

@@ -73,6 +73,23 @@ describe('serv client', () => {
     )
   })
 
+  it('sends a graph payload as JSON instructions and falls back after HTTP 502', async () => {
+    const seen: string[] = []
+    const complete: ServComplete = async (sent) => {
+      seen.push(String(sent.model))
+      if (String(sent.model).startsWith('gr_')) {
+        assert.equal(typeof sent.instructions, 'string')
+        assert.match(String(sent.instructions), /"input":"facts"/)
+        throw new Error('SERV Reasoning HTTP 502')
+      }
+      return { output_text: 'direct' }
+    }
+    const result = await servChat({ system: 'sys', user: 'facts', model: 'gr_abc' }, complete)
+    assert.deepEqual(seen, ['gr_abc', 'gpt-5.4-mini'])
+    assert.equal(result.text, 'direct')
+    assert.equal(result.meta.model, 'gpt-5.4-mini')
+  })
+
   it('builds a shadow-agent tool only when asked', () => {
     assert.deepEqual(buildServTools({}), [])
     const tools = buildServTools({ shadowAgent: { hint: 'stay', maxIterations: 2 } })

@@ -28,6 +28,7 @@ export interface Env {
   THAW_CASE_FULL_USD?: string
   THAW_PAID_PATH_ENABLED?: string
   SERV_API_KEY?: string
+  OPENSERV_API_KEY?: string
   ETHERSCAN_API_KEY?: string
   TRONGRID_API_KEY?: string
   THAW_RECEIPT_SECRET?: string
@@ -56,6 +57,7 @@ const ENV_KEYS = [
   'THAW_CASE_FULL_USD',
   'THAW_PAID_PATH_ENABLED',
   'SERV_API_KEY',
+  'OPENSERV_API_KEY',
   'ETHERSCAN_API_KEY',
   'TRONGRID_API_KEY',
   'THAW_RECEIPT_SECRET',

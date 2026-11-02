@@ -1,6 +1,6 @@
 import { explainTrigger, draftAppeal, templateAppeal, type AppealDraft } from '../chance/case-serv.ts'
 import type { ServComplete } from '@thaw/guard'
-import { AML_ENDPOINTS, LAST_KNOWN_QUOTE_MICRO, assessKitePayment, type KiteDeny } from '../kite/guard.ts'
+import { AML_ENDPOINTS, LAST_KNOWN_QUOTE_MICRO, assessKitePayment, chargeAllowed, type KiteDeny } from '../kite/guard.ts'
 import type { KiteExecutor } from '../kite/executor.ts'
 import { rankCounterparties, type RankedAddress, type RankedTransfer } from './rank.ts'
 import { timelinePdf } from './pdf.ts'
@@ -41,6 +41,13 @@ export type CaseWork = {
   appeal: AppealDraft | null
   timeline: string[]
   pdfBase64: string
+}
+
+function answerUsable(body: unknown): boolean {
+  if (body == null) return false
+  const text = typeof body === 'string' ? body : JSON.stringify(body)
+  if (!text.trim() || text === '{}' || text === 'null') return false
+  return !/ignore (all )?previous instructions|private key|seed phrase/i.test(text)
 }
 
 export async function runPaidCase(input: PipelineInput, deps: {
@@ -117,15 +124,19 @@ export async function runPaidCase(input: PipelineInput, deps: {
         }
         caseSpent += result.amountMicro
         daySpent += result.amountMicro
-        screened += 1
-        aml.push({ endpoint: endpoint.id, address: address.address, outcome: 'paid' })
+        const usable = answerUsable(result.body) && chargeAllowed(quote, result.amountMicro)
+        const outcome = !chargeAllowed(quote, result.amountMicro) ? 'over_catalog' : usable ? 'paid' : 'withheld'
+        if (usable) {
+          screened += 1
+          aml.push({ endpoint: endpoint.id, address: address.address, outcome: 'paid' })
+        }
         await deps.recordSpend({
           caseId: input.caseId,
           source: 'kite',
           endpoint: endpoint.url,
           amountMicro: result.amountMicro,
           idempotencyKey: key,
-          outcome: 'paid',
+          outcome,
           createdAt: deps.now(),
         })
       }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { AML_ENDPOINTS, CASE_CAP_MICRO, TX_CAP_MICRO, assessKitePayment } from './guard.ts'
+import { AML_ENDPOINTS, CASE_CAP_MICRO, TX_CAP_MICRO, assessKitePayment, chargeAllowed } from './guard.ts'
 import { createHttpKiteExecutor, createRunnerExecutor } from './executor.ts'
 
 const lion = AML_ENDPOINTS[0]!
@@ -32,6 +32,11 @@ describe('kite session guard', () => {
     assert.equal(assessKitePayment({ ...base, daySpentMicro: 10_000_000 }).ok, false)
     assert.equal(assessKitePayment({ ...base, now: 2_000 }).ok, false)
     assert.equal(assessKitePayment({ ...base, enabled: false }).ok, false)
+  })
+
+  it('refuses a charge that is both 10% and $0.001 above the catalog quote', () => {
+    assert.equal(chargeAllowed(5_000, 5_400), true)
+    assert.equal(chargeAllowed(200_000, 230_000), false)
   })
 
   it('does not call the network when HTTP execute is unpublished', async () => {

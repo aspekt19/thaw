@@ -148,7 +148,7 @@ function logMeta(label: string, meta: ServMeta): void {
 }
 
 export function readServApiKey(): string {
-  const apiKey = process.env.SERV_API_KEY?.trim()
+  const apiKey = process.env.SERV_API_KEY?.trim() || process.env.OPENSERV_API_KEY?.trim()
   if (!apiKey) {
     throw new Error(
       'SERV_API_KEY is missing. Create a key at https://console.openserv.ai and set it in .env (Reasoning — not Platform).',
@@ -160,9 +160,52 @@ export function readServApiKey(): string {
   return apiKey
 }
 
+export function graphTimeoutMs(): number {
+  const raw = Number(process.env.SERV_GRAPH_TIMEOUT_MS ?? '30000')
+  if (!Number.isFinite(raw)) return 30_000
+  return Math.min(45_000, Math.max(5_000, raw))
+}
+
+function withContentFilter(tools: ServTool[]): ServTool[] {
+  if (tools.some((tool) => tool.name === 'serv_disable_content_filter')) return tools
+  return [...tools, { type: 'function', name: 'serv_disable_content_filter' }]
+}
+
+/** Graphs are called as model gr_<id>. The working call puts the payload in instructions as JSON. */
+export function responsesBody(params: {
+  model: string
+  system: string
+  user: string
+  reasoningEffort: ServReasoningEffort
+  tools: ServTool[]
+  text?: Record<string, unknown>
+}): Record<string, unknown> {
+  const graph = params.model.startsWith('gr_')
+  return {
+    model: params.model,
+    instructions: graph ? JSON.stringify({ system: params.system, input: params.user }) : params.system,
+    input: params.user,
+    reasoning: { effort: params.reasoningEffort },
+    ...(params.text ? { text: params.text } : {}),
+    ...(params.tools.length ? { tools: params.tools } : {}),
+  }
+}
+
+async function withGraphFallback<T>(model: string, run: (model: string) => Promise<T>): Promise<T> {
+  try {
+    return await run(model)
+  } catch (error) {
+    if (!model.startsWith('gr_')) throw error
+    const message = error instanceof Error ? error.message : ''
+    if (!/HTTP 404|HTTP 502|non-JSON|Empty response|content filter|timed out|Timeout|Abort/i.test(message)) throw error
+    return run(resolveModel())
+  }
+}
+
 export function createFetchComplete(fetchImpl: typeof fetch = fetch): ServComplete {
   return async (body) => {
     const apiKey = readServApiKey()
+    const model = typeof body.model === 'string' ? body.model : ''
     const response = await fetchImpl(SERV_RESPONSES_URL, {
       method: 'POST',
       headers: {
@@ -170,11 +213,14 @@ export function createFetchComplete(fetchImpl: typeof fetch = fetch): ServComple
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(model.startsWith('gr_') ? graphTimeoutMs() : 20_000),
     })
     if (!response.ok) {
       throw new Error(`SERV Reasoning HTTP ${response.status}`)
     }
-    return (await response.json()) as ServResponse
+    const parsed = (await response.json()) as ServResponse
+    const requestId = response.headers.get('x-openserv-request-id')
+    return requestId ? { ...parsed, id: parsed.id ?? requestId } : parsed
   }
 }
 
@@ -191,29 +237,24 @@ export async function servChat(
 ): Promise<{ text: string; meta: ServMeta }> {
   const model = params.model ?? servModel()
   const reasoningEffort = resolveEffort(params.reasoningEffort)
-  const tools = buildServTools(params.servTools ?? {})
+  const tools = withContentFilter(buildServTools(params.servTools ?? {}))
   const started = Date.now()
-  const response = await complete({
-    model,
-    instructions: params.system,
-    input: params.user,
-    reasoning: { effort: reasoningEffort },
-    ...(tools.length ? { tools } : {}),
+  return withGraphFallback(model, async (chosen) => {
+    const response = await complete(responsesBody({ model: chosen, system: params.system, user: params.user, reasoningEffort, tools }))
+    const read = readServText(response)
+    if (read.refusal) throw new Error(`SERV Reasoning refused: ${read.refusal}`)
+    if (!read.text) throw new Error('Empty response from SERV Reasoning')
+    const meta: ServMeta = {
+      model: response.model ?? chosen,
+      reasoningEffort,
+      finishReason: read.finishReason,
+      usage: usageFromResponse(response),
+      latencyMs: Date.now() - started,
+      promptVersion: params.promptVersion,
+    }
+    logMeta('chat', meta)
+    return { text: read.text, meta }
   })
-  const read = readServText(response)
-  if (read.refusal) throw new Error(`SERV Reasoning refused: ${read.refusal}`)
-  if (!read.text) throw new Error('Empty response from SERV Reasoning')
-  const text = read.text
-  const meta: ServMeta = {
-    model: response.model ?? model,
-    reasoningEffort,
-    finishReason: read.finishReason,
-    usage: usageFromResponse(response),
-    latencyMs: Date.now() - started,
-    promptVersion: params.promptVersion,
-  }
-  logMeta('chat', meta)
-  return { text, meta }
 }
 
 export async function servStructured<T>(
@@ -232,53 +273,48 @@ export async function servStructured<T>(
 ): Promise<{ data: T; meta: ServMeta }> {
   const model = params.model ?? servModel()
   const reasoningEffort = resolveEffort(params.reasoningEffort)
-  const tools = buildServTools(params.servTools ?? {})
+  const tools = withContentFilter(buildServTools(params.servTools ?? {}))
   const started = Date.now()
-  const response = await complete({
-    model,
-    instructions: params.system,
-    input: params.user,
-    reasoning: { effort: reasoningEffort },
-    text: {
-      format: {
-        type: 'json_schema',
-        name: params.schemaName,
-        strict: true,
-        schema: params.jsonSchema,
-      },
+  const textFormat = {
+    format: {
+      type: 'json_schema',
+      name: params.schemaName,
+      strict: true,
+      schema: params.jsonSchema,
     },
-    ...(tools.length ? { tools } : {}),
+  }
+  return withGraphFallback(model, async (chosen) => {
+    const response = await complete(responsesBody({
+      model: chosen,
+      system: params.system,
+      user: params.user,
+      reasoningEffort,
+      tools,
+      text: textFormat,
+    }))
+    const read = readServText(response)
+    const finishReason = read.finishReason
+    if (finishReason === 'length') throw new Error('SERV Reasoning response truncated (finish_reason=length)')
+    if (finishReason === 'content_filter') throw new Error('SERV Reasoning blocked by content filter')
+    if (read.refusal) throw new Error(`SERV Reasoning refused: ${read.refusal}`)
+    const text = read.text
+    if (!text) throw new Error(`Empty structured response from SERV Reasoning (finish_reason=${finishReason ?? 'unknown'})`)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error('SERV Reasoning returned non-JSON structured content')
+    }
+    const data = params.parse(parsed)
+    const meta: ServMeta = {
+      model: response.model ?? chosen,
+      reasoningEffort,
+      finishReason,
+      usage: usageFromResponse(response),
+      latencyMs: Date.now() - started,
+      promptVersion: params.promptVersion,
+    }
+    logMeta(`structured:${params.schemaName}`, meta)
+    return { data, meta }
   })
-  const read = readServText(response)
-  const finishReason = read.finishReason
-  if (finishReason === 'length') {
-    throw new Error('SERV Reasoning response truncated (finish_reason=length)')
-  }
-  if (finishReason === 'content_filter') {
-    throw new Error('SERV Reasoning blocked by content filter')
-  }
-  if (read.refusal) {
-    throw new Error(`SERV Reasoning refused: ${read.refusal}`)
-  }
-  const text = read.text
-  if (!text) {
-    throw new Error(`Empty structured response from SERV Reasoning (finish_reason=${finishReason ?? 'unknown'})`)
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    throw new Error('SERV Reasoning returned non-JSON structured content')
-  }
-  const data = params.parse(parsed)
-  const meta: ServMeta = {
-    model: response.model ?? model,
-    reasoningEffort,
-    finishReason,
-    usage: usageFromResponse(response),
-    latencyMs: Date.now() - started,
-    promptVersion: params.promptVersion,
-  }
-  logMeta(`structured:${params.schemaName}`, meta)
-  return { data, meta }
 }
