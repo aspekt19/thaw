@@ -36,22 +36,22 @@ export async function postCheck(request: Request): Promise<Response> {
 
 export async function handleRequest(request: Request, deps: ChanceDeps): Promise<Response> {
   if (request.method !== 'POST') {
-    return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
+    return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
   }
   const raw = await request.text()
   try {
     assertJsonBodySize(raw)
   } catch {
-    return json({ ok: false, code: 'body', error: 'Слишком большой запрос.' }, 413)
+    return json({ ok: false, code: 'body', error: 'The request is too large.' }, 413)
   }
   let payload: unknown
   try {
     payload = await payloadFrom(raw, request.headers.get('content-type'))
   } catch {
-    return json({ ok: false, code: 'json', error: 'Не удалось прочитать запрос.' }, 400)
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
   }
   const size = checkBodySize(payload)
-  if (!size.ok) return json({ ok: false, code: 'body', error: 'Слишком большой запрос.' }, size.status)
+  if (!size.ok) return json({ ok: false, code: 'body', error: 'The request is too large.' }, size.status)
   const input = parseChanceInput(payload)
   if (!input.ok) return json({ ok: false, code: 'input', error: input.error }, 400)
   const ip = clientIp({ headers: headerRecord(request) })
@@ -60,7 +60,7 @@ export async function handleRequest(request: Request, deps: ChanceDeps): Promise
     return json(result, result.ok ? 200 : result.status)
   } catch (err) {
     console.error('check-chance failed', err instanceof Error ? err.name : 'error')
-    return json({ ok: false, code: 'internal', error: 'Проверка не выполнена.' }, 500)
+    return json({ ok: false, code: 'internal', error: 'The check did not finish.' }, 500)
   }
 }
 

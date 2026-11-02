@@ -121,7 +121,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   applyEnv(env)
   const path = new URL(request.url).pathname
   if (path === '/api/check-orders' || path === '/v1/check-orders') {
-    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
     return createOrder(request, env)
   }
   const residence = /^\/(?:api|v1)\/check-orders\/([^/]+)\/residence$/.exec(path)
@@ -131,12 +131,12 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   }
   const confirm = /^\/(?:api|v1)\/check-orders\/([^/]+)\/confirm$/.exec(path)
   if (confirm) {
-    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Нужен POST.' }, 405)
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
     return confirmOrder(request, env, decodeURIComponent(confirm[1] ?? ''))
   }
   const orderRead = /^\/(?:api|v1)\/check-orders\/([^/]+)$/.exec(path)
   if (orderRead) {
-    if (request.method !== 'GET') return json({ ok: false, code: 'method', error: 'Нужен GET.' }, 405)
+    if (request.method !== 'GET') return json({ ok: false, code: 'method', error: 'Use GET.' }, 405)
     return readOrder(env, decodeURIComponent(orderRead[1] ?? ''))
   }
   if (path === '/api/cases' || path === '/v1/cases') {
@@ -155,7 +155,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
   }
   if (path === '/api/check-chance' || path === '/v1/check-chance') {
     return json(
-      { ok: false, code: 'payment_required', error: 'Сначала создайте заказ через POST /api/check-orders и оплатите его.' },
+      { ok: false, code: 'payment_required', error: 'Create an order with POST /api/check-orders and pay it first.' },
       402,
     )
   }
@@ -165,19 +165,19 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
 async function createOrder(request: Request, env: Env): Promise<Response> {
   const recipient = env.THAW_USDC_ADDRESS?.trim() ?? ''
   if (!/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
-    return json({ ok: false, code: 'payment_not_configured', error: 'Адрес для USDC не задан.' }, 503)
+    return json({ ok: false, code: 'payment_not_configured', error: 'The USDC address is not set.' }, 503)
   }
   let priceMicro: number
   try {
     priceMicro = checkPriceMicro(env.THAW_CHECK_PRICE_USD)
   } catch {
-    return json({ ok: false, code: 'price', error: 'Цена проверки должна быть не меньше 1.00 USD.' }, 500)
+    return json({ ok: false, code: 'price', error: 'The check price must be at least 1.00 USD.' }, 500)
   }
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return json({ ok: false, code: 'json', error: 'Не удалось прочитать запрос.' }, 400)
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
   }
   const input = parseChanceInput(body)
   if (!input.ok) return json({ ok: false, code: 'input', error: input.error }, 400)
@@ -214,25 +214,25 @@ async function createOrder(request: Request, env: Env): Promise<Response> {
       201,
     )
   }
-  return json({ ok: false, code: 'amount', error: 'Не удалось выделить уникальную сумму. Повторите.' }, 503)
+  return json({ ok: false, code: 'amount', error: 'Could not reserve a unique amount. Try again.' }, 503)
 }
 
 async function confirmOrder(request: Request, env: Env, orderId: string): Promise<Response> {
   const order = await getOrder(env.DB, orderId)
-  if (!order) return json({ ok: false, code: 'not_found', error: 'Заказ не найден.' }, 404)
+  if (!order) return json({ ok: false, code: 'not_found', error: 'That invoice is not on this server.' }, 404)
   if (order.status === 'paid' && order.result_json) return json(JSON.parse(order.result_json), 200)
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return json({ ok: false, code: 'json', error: 'Не удалось прочитать запрос.' }, 400)
+    return json({ ok: false, code: 'json', error: 'Could not read the request.' }, 400)
   }
   const txHash = body && typeof body === 'object' ? (body as { txHash?: unknown }).txHash : undefined
-  if (typeof txHash !== 'string') return json({ ok: false, code: 'tx', error: 'Нужен txHash перевода.' }, 400)
+  if (typeof txHash !== 'string') return json({ ok: false, code: 'tx', error: 'Paste the transaction hash.' }, 400)
   const chain = isPaymentChain(order.chain) ? order.chain : null
   const recipient = env.THAW_USDC_ADDRESS?.trim() ?? ''
   if (!chain || !/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
-    return json({ ok: false, code: 'payment_not_configured', error: 'Оплата не настроена.' }, 503)
+    return json({ ok: false, code: 'payment_not_configured', error: 'This server has no USDC address, so it cannot open an invoice.' }, 503)
   }
   const checked = await verifyUsdcTransfer(paymentRpc(chain, env.ALCHEMY_API_KEY, fetch, chain === 'base' ? env.THAW_RPC_URL_BASE : env.THAW_RPC_URL_ARBITRUM), {
     chain,
@@ -241,7 +241,7 @@ async function confirmOrder(request: Request, env: Env, orderId: string): Promis
     amountAtomic: BigInt(order.amount_atomic),
     minConfirmations: confirmationsOf(env),
   })
-  if (!checked.ok) return json({ ok: false, code: checked.reason, error: 'Перевод не подошёл к этому заказу.' }, 402)
+  if (!checked.ok) return json({ ok: false, code: checked.reason, error: 'That transfer does not match this invoice.' }, 402)
   const input = JSON.parse(order.input_json) as ChanceInput
   const depositChain: RpcChain | null = input.chain === 'ethereum' || input.chain === 'arbitrum' || input.chain === 'base' ? input.chain : null
   const ip = order.client_key.split('|')[0] || 'unknown'
@@ -254,7 +254,7 @@ async function confirmOrder(request: Request, env: Env, orderId: string): Promis
     resultJson: JSON.stringify(result),
     feeMicro: order.price_micro,
   })
-  if (!stored) return json({ ok: false, code: 'reused', error: 'Этот перевод уже использован.' }, 409)
+  if (!stored) return json({ ok: false, code: 'reused', error: 'That transfer was already used on another invoice.' }, 409)
   return json(result, 200)
 }
 
@@ -284,13 +284,13 @@ async function setResidence(request: Request, env: Env, orderId: string): Promis
   const saved = await updatePaidResult(env.DB, order.id, JSON.stringify(next))
   if (!saved) return json({ ok: false, code: 'not_found', error: 'The result was not stored.' }, 404)
   const fresh = await getOrder(env.DB, order.id)
-  if (!fresh) return json({ ok: false, code: 'not_found', error: 'Заказ не найден.' }, 404)
+  if (!fresh) return json({ ok: false, code: 'not_found', error: 'That invoice is not on this server.' }, 404)
   return json(orderView(env, fresh), 200)
 }
 
 async function readOrder(env: Env, orderId: string): Promise<Response> {
   const order = await getOrder(env.DB, orderId)
-  if (!order) return json({ ok: false, code: 'not_found', error: 'Заказ не найден.' }, 404)
+  if (!order) return json({ ok: false, code: 'not_found', error: 'That invoice is not on this server.' }, 404)
   return json(orderView(env, order), 200)
 }
 
@@ -495,7 +495,7 @@ export default {
       return env.ASSETS.fetch(request)
     } catch (err) {
       console.error('worker failed', err instanceof Error ? err.name : 'error')
-      return json({ ok: false, code: 'internal', error: 'Запрос не выполнен.' }, 500)
+      return json({ ok: false, code: 'internal', error: 'The request failed.' }, 500)
     }
   },
 }

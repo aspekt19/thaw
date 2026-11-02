@@ -124,7 +124,7 @@ export type CheckFailure = {
 }
 
 export const DISCLAIMER =
-  'Это подготовка документов, не юридическая помощь. Мы не обещаем разморозку. Оценку дают правила по тексту уведомления и открытым данным блокчейна. Решение принимает только биржа. Санкционные случаи мы не берём.'
+  'This is document preparation, not legal advice. We do not promise that the withdrawal will be released. The chance comes from rules on the notice text and public chain data. Only the exchange decides. We decline sanctions cases.'
 
 export function paidPathView(deps: ChanceDeps): PublicResult['paidPath'] {
   return { enabled: deps.paidPathEnabled, priceUsd: deps.paidPathPriceUsd, implemented: false }
@@ -137,12 +137,12 @@ export async function runChanceCheck(
 ): Promise<PublicResult | CheckFailure> {
   const burst = deps.burst(`burst:${ip}`)
   if (!burst.ok) {
-    return { ok: false, status: 429, code: 'burst', error: 'Слишком много запросов. Подождите минуту.' }
+    return { ok: false, status: 429, code: 'burst', error: 'Too many requests. Wait a minute.' }
   }
   if (deps.captchaRequired) {
     const passed = await deps.verifyCaptcha(input.captchaToken)
     if (!passed) {
-      return { ok: false, status: 403, code: 'captcha', error: 'Проверка капчи не пройдена.' }
+      return { ok: false, status: 403, code: 'captcha', error: 'The captcha check did not pass.' }
     }
   }
 
@@ -159,7 +159,7 @@ export async function runChanceCheck(
         ok: false,
         status: 429,
         code: 'user_limit',
-        error: 'Бесплатный лимит на сегодня исчерпан. Платная проверка сверх лимита выключена.',
+        error: 'The free checks for today are used up. Paid checks past that limit are off.',
         paidPath: paidPathView(deps),
       }
     }
@@ -167,7 +167,7 @@ export async function runChanceCheck(
       ok: false,
       status: 501,
       code: 'paid_path_stub',
-      error: 'Платная проверка сверх лимита помечена в настройке, но оплата не подключена. Проверку не запускали.',
+      error: 'Paid checks past the limit are marked on, but payment is not connected. The check did not run.',
       paidPath: paidPathView(deps),
     }
   }
@@ -200,7 +200,7 @@ export async function runChanceCheck(
       ok: false,
       status: 429,
       code: 'spend_cap',
-      error: 'Дневной потолок расходов на проверки исчерпан.',
+      error: 'The daily spend cap for checks is used up.',
       paidPath: paidPathView(deps),
     }
   }
@@ -467,7 +467,7 @@ export function createServHooks(complete: ServComplete): ServHooks {
       const fenced = fence(JSON.stringify({ verdict, reasons }), 4000)
       const result = await servChat(
         {
-          system: `Explain the given verdict in plain Russian, in 2 to 4 sentences. ${UNTRUSTED_RULE} This is document preparation, not legal advice. Do not promise an unfreeze. thaw.explain.v1`,
+          system: `Explain the given verdict in plain English, in 2 to 4 sentences. ${UNTRUSTED_RULE} This is document preparation, not legal advice. Do not promise an unfreeze. thaw.explain.v1`,
           user: fenced,
           promptVersion: 'thaw.explain.v1',
           servTools: { promptGuard: true },

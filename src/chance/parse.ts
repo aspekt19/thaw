@@ -33,61 +33,61 @@ const SECRET_KEYS = ['privatekey', 'private_key', 'seed', 'seedphrase', 'seed_ph
 
 export function parseChanceInput(body: unknown): ParseResult {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { ok: false, error: 'Нужен объект с полями проверки.' }
+    return { ok: false, error: 'Send a check object.' }
   }
   const row = body as Record<string, unknown>
   for (const key of Object.keys(row)) {
     if (SECRET_KEYS.includes(key.toLowerCase().replace(/[\s-]/g, ''))) {
-      return { ok: false, error: 'Мы не принимаем приватные ключи и сид-фразы.' }
+      return { ok: false, error: 'We do not accept private keys or seed phrases.' }
     }
   }
   const exchange = readEnum(row.exchange, EXCHANGES)
-  if (!exchange) return { ok: false, error: 'Укажите биржу из списка.' }
+  if (!exchange) return { ok: false, error: 'Choose an exchange from the list.' }
   if (typeof row.notice !== 'string' || row.notice.trim().length === 0 || row.notice.trim().length > 8000) {
-    return { ok: false, error: 'Вставьте текст уведомления, до 8000 знаков.' }
+    return { ok: false, error: 'Paste the notice text, up to 8000 characters.' }
   }
   if (typeof row.amount !== 'string' || !positiveAmount(row.amount)) {
-    return { ok: false, error: 'Укажите сумму обычным числом, больше нуля.' }
+    return { ok: false, error: 'Enter the amount as a number greater than zero.' }
   }
   if (typeof row.asset !== 'string' || !/^[A-Za-z]{2,12}$/.test(row.asset)) {
-    return { ok: false, error: 'Укажите актив буквами, например USDT.' }
+    return { ok: false, error: 'Enter the asset in letters, for example USDT.' }
   }
   const chain = readEnum(row.chain, CHAINS)
-  if (!chain) return { ok: false, error: 'Сеть: tron, ethereum, arbitrum или base.' }
+  if (!chain) return { ok: false, error: 'Chain must be tron, ethereum, arbitrum, or base.' }
   if (typeof row.deposit !== 'string' || !classifyDeposit(chain, row.deposit)) {
-    return { ok: false, error: 'Депозит должен быть адресом или txid этой сети.' }
+    return { ok: false, error: 'The deposit must be an address or transaction id on this chain.' }
   }
   if (typeof row.date !== 'string' || !validDay(row.date)) {
-    return { ok: false, error: 'Дата в формате ГГГГ-ММ-ДД.' }
+    return { ok: false, error: 'Use a real date as YYYY-MM-DD.' }
   }
   const listedSources = readList(row.fundsSources, FUNDS)
-  if (listedSources === 'bad') return { ok: false, error: 'Укажите происхождение средств из списка.' }
+  if (listedSources === 'bad') return { ok: false, error: 'Choose where the funds came from, from the list.' }
   const hasSourceList = Array.isArray(row.fundsSources)
   const origin = hasSourceList ? originFromSources(listedSources) : readEnum(row.origin, ORIGINS)
-  if (!origin) return { ok: false, error: 'Укажите, откуда средства, из списка.' }
+  if (!origin) return { ok: false, error: 'Choose where the funds came from, from the list.' }
   const fundsSources = hasSourceList ? listedSources : sourcesFromOrigin(origin)
   const listedEvidence = readList(row.evidence, EVIDENCE)
-  if (listedEvidence === 'bad') return { ok: false, error: 'Укажите, какие документы уже есть, из списка.' }
+  if (listedEvidence === 'bad') return { ok: false, error: 'Choose which records you already have, from the list.' }
   const evidence = Array.isArray(row.evidence) ? listedEvidence : []
   const documents = Array.isArray(row.evidence) ? documentsFromEvidence(evidence) : readDocuments(row.hasDocuments)
-  if (documents === 'bad') return { ok: false, error: 'Поле документов: yes, no или пусто.' }
+  if (documents === 'bad') return { ok: false, error: 'Documents must be yes, no, or empty.' }
   const rejected = row.priorExchangeRejection === true || row.priorExchangeRejection === 'yes' || row.priorRefusal === true || row.priorRefusal === 'yes'
   let priorRoundsCount: number | undefined
   if (row.priorRoundsCount !== undefined && row.priorRoundsCount !== '') {
     const rounds = typeof row.priorRoundsCount === 'number' ? row.priorRoundsCount : Number(row.priorRoundsCount)
-    if (!Number.isInteger(rounds) || rounds < 0 || rounds > 20) return { ok: false, error: 'Число раундов должно быть от 0 до 20.' }
+    if (!Number.isInteger(rounds) || rounds < 0 || rounds > 20) return { ok: false, error: 'Rounds already sent must be a whole number from 0 to 20.' }
     priorRoundsCount = rounds
   }
   let disputedDepositsCount = 1
   if (row.disputedDepositsCount !== undefined && row.disputedDepositsCount !== '') {
     const count = typeof row.disputedDepositsCount === 'number' ? row.disputedDepositsCount : Number(row.disputedDepositsCount)
-    if (!Number.isInteger(count) || count < 1 || count > 20) return { ok: false, error: 'Число спорных депозитов должно быть от 1 до 20.' }
+    if (!Number.isInteger(count) || count < 1 || count > 20) return { ok: false, error: 'Disputed deposits must be a whole number from 1 to 20.' }
     disputedDepositsCount = count
   }
   let clientId: string | undefined
   if (row.clientId !== undefined && row.clientId !== '') {
     if (typeof row.clientId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(row.clientId)) {
-      return { ok: false, error: 'Идентификатор браузера не подходит.' }
+      return { ok: false, error: 'The browser id is not valid.' }
     }
     clientId = row.clientId
   }

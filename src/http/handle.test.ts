@@ -53,7 +53,7 @@ describe('HTTP check', () => {
     )
     assert.equal(secret.status, 400)
     const secretBody = (await secret.json()) as { error: string }
-    assert.match(secretBody.error, /ключ/)
+    assert.match(secretBody.error, /private key/i)
 
     const form = new URLSearchParams({
       exchange: 'okx',

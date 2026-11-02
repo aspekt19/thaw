@@ -5,6 +5,6 @@ export async function POST(request: Request): Promise<Response> {
     return await postCheck(request)
   } catch (err) {
     console.error('check-chance failed', err instanceof Error ? err.name : 'error')
-    return Response.json({ ok: false, code: 'internal', error: 'Проверка не выполнена.' }, { status: 500 })
+    return Response.json({ ok: false, code: 'internal', error: 'The check did not finish.' }, { status: 500 })
   }
 }
