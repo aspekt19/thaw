@@ -1,19 +1,32 @@
 import { alchemyErc20To, type RpcCall } from '../chain/evm-rpc.ts'
 import { EVM_CHAIN_IDS, TRANSFER_TOPIC, type Chain } from './constants.ts'
 import { classifyDeposit, normalizeTronAddress, sameAddress } from './address.ts'
+import { curatedLabel, isHtxLabel, tronscanLabel } from './labels.ts'
 import { compareAmount, compareDate } from './money.ts'
 
 export type Match = 'match' | 'mismatch' | 'unknown'
+
+export type HopParty = { address: string; raw: string; timeMs: number | null }
+
+export type AddressLabel = { address: string; exchange: string; name: string; source: string }
 
 export type HopLookup = {
   status: 'ok' | 'unavailable' | 'ambiguous'
   detail: string
   sender: string | null
   hop1: string[]
+  /** Counterparties with the chain amount and time, for ranking. */
+  hopTransfers: HopParty[]
+  depositTimeMs: number | null
+  depositRaw: string | null
+  labels: AddressLabel[]
   firstHopOk: boolean
   amountMatch: Match
   dateMatch: Match
 }
+
+/** Keyless TronGrid is about 3 requests/second. Tests may set these to zero. */
+export const tronPace = { gapMs: 350, backoffMs: [1000, 3000] }
 
 type FetchLike = typeof fetch
 
@@ -202,7 +215,7 @@ function pickOne(transfers: Transfer[], asset: string): Transfer | 'ambiguous' |
   return 'ambiguous'
 }
 
-function topSenders(chain: Chain, incoming: Transfer[], sender: string, contract: string | null, asset: string): string[] {
+function topParties(chain: Chain, incoming: Transfer[], sender: string, contract: string | null, asset: string): HopParty[] {
   const filtered = incoming.filter((item) => {
     if (sameAddress(chain, item.from, sender)) return false
     if (contract) return Boolean(item.contract) && sameAddress(chain, item.contract as string, contract)
@@ -215,12 +228,12 @@ function topSenders(chain: Chain, incoming: Transfer[], sender: string, contract
     return left > right ? -1 : 1
   })
   const seen = new Set<string>()
-  const out: string[] = []
+  const out: HopParty[] = []
   for (const item of ranked) {
     const key = chain === 'tron' ? item.from : item.from.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(item.from)
+    out.push({ address: item.from, raw: item.raw, timeMs: item.timeMs })
     if (out.length === HOP_LIMIT) break
   }
   return out
@@ -228,7 +241,7 @@ function topSenders(chain: Chain, incoming: Transfer[], sender: string, contract
 
 function finish(
   deposit: Transfer,
-  hop1: string[],
+  parties: HopParty[],
   firstHopOk: boolean,
   statedAmount: string,
   statedDate: string,
@@ -241,16 +254,45 @@ function finish(
     status: 'ok',
     detail,
     sender: deposit.from,
-    hop1,
+    hop1: parties.map((party) => party.address),
+    hopTransfers: parties,
+    depositTimeMs: deposit.timeMs,
+    depositRaw: deposit.raw,
+    labels: [],
     firstHopOk,
     amountMatch,
     dateMatch,
   }
 }
 
+let nextTronAt = 0
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function paceTron(): Promise<void> {
+  const wait = Math.max(0, nextTronAt - Date.now())
+  nextTronAt = Date.now() + wait + tronPace.gapMs
+  if (wait > 0) await sleep(wait)
+}
+
 async function getJson(fetchImpl: FetchLike, url: string, headers?: Headers): Promise<{ ok: boolean; status: number; body: unknown }> {
-  const response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(10_000) })
-  return { ok: response.ok, status: response.status, body: await readJson(response) }
+  const paced = url.includes('trongrid.io') || url.includes('tronscan.org')
+  const attempts = paced ? tronPace.backoffMs.length + 1 : 1
+  let last = { ok: false, status: 0, body: null as unknown }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (paced) await paceTron()
+    try {
+      const response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(10_000) })
+      last = { ok: response.ok, status: response.status, body: await readJson(response) }
+    } catch {
+      last = { ok: false, status: 0, body: null }
+    }
+    if (last.ok || !paced || (last.status !== 429 && last.status !== 403) || attempt === attempts - 1) return last
+    await sleep(tronPace.backoffMs[attempt] ?? 3000)
+  }
+  return last
 }
 
 export async function lookupFirstHop(
@@ -265,12 +307,13 @@ export async function lookupFirstHop(
       detail: 'deposit does not match this chain',
       sender: null,
       hop1: [],
+      ...emptyTrace(),
       firstHopOk: false,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
     }
   }
-  if (input.chain === 'tron') return lookupTron(input, kind, fetchImpl, keys.trongridApiKey)
+  if (input.chain === 'tron') return annotate(await lookupTron(input, kind, fetchImpl, keys.trongridApiKey), fetchImpl)
   const evm = evmChain(input.chain)
   if (evm && keys.evmCall) {
     const viaRpc = await lookupEvmRpc(input, kind, keys.evmCall, keys.alchemyTransfers === true, evm)
@@ -282,6 +325,7 @@ export async function lookupFirstHop(
       detail: 'ETHERSCAN_API_KEY is not set',
       sender: null,
       hop1: [],
+      ...emptyTrace(),
       firstHopOk: false,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
@@ -306,16 +350,25 @@ async function lookupTron(
         detail: 'TronGrid did not return incoming transfers',
         sender,
         hop1: [],
+        hopTransfers: [],
+        depositTimeMs: null,
+        depositRaw: null,
+        labels: [],
         firstHopOk: false,
         amountMatch: 'unknown',
         dateMatch: 'unknown',
       }
     }
+    const parties = topParties('tron', page, sender, null, input.asset)
     return {
       status: 'ok',
       detail: 'Address treated as the sender. Amount and date need a transaction id. One TronGrid page, limit 200.',
       sender,
-      hop1: topSenders('tron', page, sender, null, input.asset),
+      hop1: parties.map((party) => party.address),
+      hopTransfers: parties,
+      depositTimeMs: null,
+      depositRaw: null,
+      labels: [],
       firstHopOk: true,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
@@ -341,7 +394,7 @@ async function lookupTron(
   const hopPage = await incomingTron(fetchImpl, headers, chosen.from)
   return finish(
     deposit,
-    hopPage ? topSenders('tron', hopPage, chosen.from, deposit.contract, input.asset) : [],
+    hopPage ? topParties('tron', hopPage, chosen.from, deposit.contract, input.asset) : [],
     hopPage !== null,
     input.amount,
     input.date,
@@ -368,11 +421,16 @@ async function lookupEvm(
     const sender = input.deposit.trim().toLowerCase()
     const page = await tokenPage(fetchImpl, apiKey, chainId, { address: sender })
     if (page === 'error') return unavailable('Etherscan tokentx did not return a list.')
+    const parties = topParties(chain, page.filter((item) => item.to === sender), sender, null, input.asset)
     return {
       status: 'ok',
       detail: 'Address treated as the sender. Amount and date need a transaction id. One tokentx page, offset 100.',
       sender,
-      hop1: topSenders(chain, page.filter((item) => item.to === sender), sender, null, input.asset),
+      hop1: parties.map((party) => party.address),
+      hopTransfers: parties,
+      depositTimeMs: null,
+      depositRaw: null,
+      labels: [],
       firstHopOk: true,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
@@ -421,7 +479,7 @@ async function lookupEvm(
   const incoming = hopPage === 'error' ? null : hopPage.filter((item) => item.to === deposit.from.toLowerCase())
   return finish(
     deposit,
-    incoming ? topSenders(chain, incoming, deposit.from, deposit.contract, input.asset) : [],
+    incoming ? topParties(chain, incoming, deposit.from, deposit.contract, input.asset) : [],
     incoming !== null,
     input.amount,
     input.date,
@@ -487,11 +545,16 @@ async function lookupEvmRpc(
         contract: item.contract,
         timeMs: item.timeMs,
       }))
+    const parties = topParties(chain, asTransfers, sender, null, input.asset)
     return {
       status: 'ok',
       detail: 'Address treated as the sender. One alchemy_getAssetTransfers page (maxCount 0x64). Amount and date need a transaction id.',
       sender,
-      hop1: topSenders(chain, asTransfers, sender, null, input.asset),
+      hop1: parties.map((party) => party.address),
+      hopTransfers: parties,
+      depositTimeMs: null,
+      depositRaw: null,
+      labels: [],
       firstHopOk: true,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
@@ -517,7 +580,7 @@ async function lookupEvmRpc(
       deposit = { ...deposit, timeMs: null }
     }
   }
-  let hop: ReturnType<typeof topSenders> = []
+  let hop: ReturnType<typeof topParties> = []
   let hopOk = false
   if (alchemyTransfers) {
     const page = await alchemyErc20To(call, deposit.from, deposit.contract)
@@ -535,7 +598,7 @@ async function lookupEvmRpc(
           contract: item.contract,
           timeMs: item.timeMs,
         }))
-      hop = topSenders(chain, incoming, deposit.from, deposit.contract, input.asset)
+      hop = topParties(chain, incoming, deposit.from, deposit.contract, input.asset)
     }
   }
   return finish(
@@ -550,12 +613,43 @@ async function lookupEvmRpc(
   )
 }
 
+async function annotate(lookup: HopLookup, fetchImpl: FetchLike): Promise<HopLookup> {
+  const addresses = [lookup.sender, ...lookup.hop1].filter((item): item is string => Boolean(item))
+  const labels: AddressLabel[] = []
+  let live = 0
+  for (const address of addresses) {
+    const known = curatedLabel(address)
+    if (known) {
+      labels.push(known)
+      continue
+    }
+    if (live >= 4) continue
+    live += 1
+    const tag = await tronscanLabel(address, fetchImpl)
+    if (tag) labels.push(tag)
+  }
+  return { ...lookup, labels }
+}
+
+export function htxLabelOn(lookup: Pick<HopLookup, 'sender' | 'hop1' | 'labels'>): boolean {
+  if ((lookup.labels ?? []).some(isHtxLabel)) return true
+  return [lookup.sender, ...lookup.hop1].some((address) => {
+    const label = address ? curatedLabel(address) : null
+    return label ? isHtxLabel(label) : false
+  })
+}
+
+function emptyTrace(): Pick<HopLookup, 'hopTransfers' | 'depositTimeMs' | 'depositRaw' | 'labels'> {
+  return { hopTransfers: [], depositTimeMs: null, depositRaw: null, labels: [] }
+}
+
 function unavailable(detail: string): HopLookup {
   return {
     status: 'unavailable',
     detail,
     sender: null,
     hop1: [],
+    ...emptyTrace(),
     firstHopOk: false,
     amountMatch: 'unknown',
     dateMatch: 'unknown',
@@ -568,6 +662,7 @@ function ambiguous(detail: string): HopLookup {
     detail,
     sender: null,
     hop1: [],
+    ...emptyTrace(),
     firstHopOk: false,
     amountMatch: 'unknown',
     dateMatch: 'unknown',

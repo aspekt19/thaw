@@ -26,6 +26,10 @@ export type PipelineInput = {
   amount: string
   asset: string
   date: string
+  notice?: string
+  fundsSources?: string[]
+  evidenceQuote?: string | null
+  labels?: Array<{ address: string; name: string; exchange: string }>
   transfers: RankedTransfer[]
   depositTimeMs: number | null
 }
@@ -63,7 +67,9 @@ export async function runPaidCase(input: PipelineInput, deps: {
   recordSpend: (row: SpendRow) => Promise<void>
 }): Promise<CaseWork> {
   const ranked = rankCounterparties(input.transfers, input.depositTimeMs, input.tier)
-  const deepEvm = ranked.filter((row) => row.deep && row.evm)
+  const deep = ranked.filter((row) => row.deep)
+  const deepEvm = deep.filter((row) => row.evm)
+  const deepTron = deep.filter((row) => !row.evm)
   const aml: CaseWork['aml'] = []
   let caseSpent = deps.caseSpentMicro
   let daySpent = deps.daySpentMicro
@@ -145,28 +151,42 @@ export async function runPaidCase(input: PipelineInput, deps: {
   }
 
   const skipped = deepEvm.length * AML_ENDPOINTS.length - screened
+  for (const row of deepTron) aml.push({ endpoint: 'tron', address: row.address, outcome: 'not_screened' })
   const facts = {
     ids: ['trace', 'deposit', ...aml.map((_, index) => `aml-${index + 1}`)],
+    exchange: input.exchange,
+    notice: input.notice ?? '',
+    fundsSources: input.fundsSources ?? [],
+    evidenceQuote: input.evidenceQuote ?? null,
+    labels: input.labels ?? [],
     deposit: input.deposit,
     amount: input.amount,
     asset: input.asset,
     date: input.date,
     chain: input.chain,
-    ranked: ranked.map((row) => ({ address: row.address, deep: row.deep })),
+    ranked: ranked.map((row) => ({ address: row.address, deep: row.deep, chain: row.chain })),
     aml,
     screened,
+    tronNotScreened: deepTron.length,
     skipped: Math.max(0, skipped),
   }
   const timeline = [
     `Case ${input.caseId}`,
     `Deposit ${input.deposit} on ${input.date}`,
-    `Ranked ${ranked.length} counterparties. Deep checks: ${deepEvm.length}.`,
+    `Ranked ${ranked.length} counterparties. Deep checks: ${deep.length}. EVM to screen: ${deepEvm.length}. TRON not screened, no TRON AML seller yet: ${deepTron.length}.`,
     wait ? `AML is waiting: ${wait}. Checked ${screened}.` : `AML checks paid: ${screened}.`,
     'This is document preparation. We do not promise a release.',
   ]
   const trigger = deps.serv ? await explainTrigger(facts, deps.serv) : { text: 'The deposit trace is attached. SERV is not configured, so this note stays with the trace. We do not promise a release.', source: 'template' as const }
   const appeal = deps.serv ? await draftAppeal(facts, input.exchange, input.tier, deps.serv) : templateAppeal(input.exchange, input.tier)
-  const pdf = timelinePdf([...timeline, trigger.text.slice(0, 180)])
+  const pdf = timelinePdf([
+    ...timeline,
+    'Trigger',
+    trigger.text,
+    'Appeal draft',
+    appeal?.subject ?? '',
+    appeal?.body ?? '',
+  ])
   let binary = ''
   for (const byte of pdf) binary += String.fromCharCode(byte)
   return {

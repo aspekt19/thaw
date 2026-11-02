@@ -17,7 +17,7 @@ import { sourcesFromOrigin } from './parse.ts'
 import { formatUsd, type Category, type Verdict } from './constants.ts'
 import { categoriesInNotice } from './lexicon.ts'
 import { screenAddresses, type BanList } from './banlist.ts'
-import { lookupFirstHop, type HopLookup } from './lookup.ts'
+import { htxLabelOn, lookupFirstHop, type HopLookup } from './lookup.ts'
 import { cacheKey, userKey, utcDay, type AsyncLimitStore, type LimitConfig } from './limits.ts'
 import { decide, type BanState } from './rules.ts'
 import { MISSING_LINE, NEED_COUNTRY_NOTE, PRODUCT_TIER_CONFIG, REASON_LINE, REFUSAL_LINE, TIER_NOTE, TRAVEL_RULE_VERIFY_NOTE, recommendTier, type Exchange as TierExchange, type Flag, type LowChanceWarning, type RefusalReason, type RuleId } from './tier.ts'
@@ -28,6 +28,7 @@ const CATEGORY_LIST = [
   'sanctions',
   'theft',
   'final_closure',
+  'technical',
   'source_of_funds',
   'additional_verification',
   'edd',
@@ -49,8 +50,10 @@ const NOTICE_SCHEMA = {
 
 const PROMISE = [/гарантир/i, /разморозим/i, /we guarantee/i, /promise to unfreeze/i, /верн[её]м средства/i]
 
+export type NoticeClass = { category: Category; quote: string }
+
 export type ServHooks = {
-  classify(notice: string): Promise<Category | null>
+  classify(notice: string): Promise<NoticeClass | null>
   explain(verdict: Verdict, reasons: string[]): Promise<string | null>
   injection?(notice: string): Promise<ServSignal>
 }
@@ -91,6 +94,7 @@ export type PublicResult = {
   inputSha256: string
   signature: string | null
   injection: 'not_called' | 'allow' | 'deny' | 'unavailable'
+  evidenceQuote: string | null
   disclaimer: string
   /** Public explorer page for the deposit the person entered. Base uses basescan.org. */
   depositExplorer: string | null
@@ -188,6 +192,10 @@ export async function runChanceCheck(
       detail: 'lookup failed',
       sender: null,
       hop1: [],
+      hopTransfers: [],
+      depositTimeMs: null,
+      depositRaw: null,
+      labels: [],
       firstHopOk: false,
       amountMatch: 'unknown',
       dateMatch: 'unknown',
@@ -234,12 +242,14 @@ export async function runChanceCheck(
       injection = 'unavailable'
     }
   }
-  const servCategory = deps.serv && !servBlocked ? await safeClassify(deps.serv, input.notice) : null
+  const servHit = deps.serv && !servBlocked ? await safeClassify(deps.serv, input.notice) : null
+  const servCategory = servHit?.category ?? null
   const categories = mergeCategories(lexicon, servCategory)
   const servOnly = servCategory && !lexicon.includes(servCategory) ? [servCategory] : []
   const decision = decide({
     categories,
     servOnly,
+    servQuote: servHit?.quote ?? null,
     ban,
     lookupOk: lookup.status === 'ok',
     firstHopOk: lookup.firstHopOk,
@@ -277,6 +287,7 @@ export async function runChanceCheck(
     inputSha256: sha256Hex(signed),
     signature: deps.receiptSecret ? signEd25519(signed, deps.receiptSecret) : null,
     injection,
+    evidenceQuote: servHit?.quote ?? null,
     disclaimer: DISCLAIMER,
     depositExplorer: depositLink(input.chain, input.deposit),
     recommendation: recommendationFor(input, decision.verdict, lookup),
@@ -287,13 +298,9 @@ export async function runChanceCheck(
   return result
 }
 
-/**
- * Whether the deposit trace shows the funds touched HTX or another sanctioned exchange.
- * TODO: the first-hop lookup returns addresses only. It has no labeled exchange or sanctions list,
- * so a link cannot be detected yet. Do not guess, and do not read this from the form.
- */
-export function htxLinkedFromLookup(_lookup: HopLookup): boolean {
-  return false
+/** True when the sender or a first hop is a published HTX or Huobi wallet, or Tronscan tags it that way. */
+export function htxLinkedFromLookup(lookup: HopLookup): boolean {
+  return htxLabelOn(lookup)
 }
 
 function knownAddresses(lookup: HopLookup): number | null {
@@ -331,7 +338,7 @@ export function recommendationWithCountry(
 }
 
 function recommendationFor(input: ChanceInput, verdict: Verdict, lookup: HopLookup): PublicResult['recommendation'] {
-  return tierRecommendation(input, verdict, knownAddresses(lookup), htxLinkedFromLookup(lookup), undefined)
+  return tierRecommendation(input, verdict, knownAddresses(lookup), htxLinkedFromLookup(lookup), undefined, lookup.firstHopOk)
 }
 
 function tierRecommendation(
@@ -340,6 +347,7 @@ function tierRecommendation(
   addressesCount: number | null,
   htxLinked: boolean,
   clientCountry: string | undefined,
+  firstHopOk?: boolean,
 ): PublicResult['recommendation'] {
   if (verdict === 'cannot_help') return null
   const picked = recommendTier(
@@ -360,6 +368,7 @@ function tierRecommendation(
       travelRuleConfirmed: false,
       clientCountry,
       htxLinked,
+      firstHopOk,
     },
     PRODUCT_TIER_CONFIG,
   )
@@ -402,7 +411,7 @@ function mergeCategories(lexicon: Category[], servCategory: Category | null): Ca
   return [...set]
 }
 
-async function safeClassify(serv: ServHooks, notice: string): Promise<Category | null> {
+async function safeClassify(serv: ServHooks, notice: string): Promise<NoticeClass | null> {
   try {
     return await serv.classify(notice)
   } catch {
@@ -448,7 +457,7 @@ export function createServHooks(complete: ServComplete): ServHooks {
       try {
       const result = await servStructured(
         {
-          system: `You classify an exchange freeze notice. ${UNTRUSTED_RULE} Pick one category. evidence_quote must be a verbatim substring of the notice. Do not give legal advice and do not promise that funds will be released. thaw.notice.v1`,
+          system: `You classify an exchange freeze notice. ${UNTRUSTED_RULE} Pick one category. Use technical when the problem is a failed credit, a technical limit, or a refusal that is not AML, sanctions, police, theft, or a final account closure. evidence_quote must be a verbatim substring of the notice. Do not give legal advice and do not promise that funds will be released. thaw.notice.v1`,
           user: fenced,
           schemaName: 'notice_category',
           jsonSchema: NOTICE_SCHEMA,
@@ -460,7 +469,7 @@ export function createServHooks(complete: ServComplete): ServHooks {
             if (!row.category || !(CATEGORY_LIST as readonly string[]).includes(row.category)) throw new Error('bad category')
             const quote = row.evidence_quote?.trim() ?? ''
             if (!quote || !notice.includes(quote)) throw new Error('quote not in notice')
-            return row.category as Category
+            return { category: row.category as Category, quote }
           },
         },
         complete,

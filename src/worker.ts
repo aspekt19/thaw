@@ -543,7 +543,7 @@ async function settlePaidCase(env: Env, caseId: string): Promise<void> {
   const row = await getCase(env.DB, caseId)
   const order = row ? await getOrder(env.DB, row.order_id) : null
   if (!row || !order || row.status !== 'paid') return
-  let input: { exchange?: string; chain?: string; deposit?: string; amount?: string; asset?: string; date?: string }
+  let input: { exchange?: string; chain?: string; deposit?: string; amount?: string; asset?: string; date?: string; notice?: string; fundsSources?: string[] }
   try {
     input = JSON.parse(order.input_json) as typeof input
   } catch {
@@ -566,8 +566,10 @@ async function settlePaidCase(env: Env, caseId: string): Promise<void> {
         amount: input.amount ?? '',
         asset: input.asset ?? '',
         date: input.date ?? '',
-        transfers: await traceTransfers(env, chain, input),
-        depositTimeMs: null,
+        ...await traceTransfers(env, chain, input),
+        notice: input.notice,
+        fundsSources: input.fundsSources,
+        evidenceQuote: evidenceQuote(order.result_json),
       },
       {
         now: () => Date.now(),
@@ -584,8 +586,9 @@ async function settlePaidCase(env: Env, caseId: string): Promise<void> {
     )
     await saveCaseWork(env.DB, caseId, work.stage, JSON.stringify(work))
   } catch (err) {
-    console.error('case pipeline failed', err instanceof Error ? err.name : 'error')
-    await saveCaseWork(env.DB, caseId, 'waiting_kite', JSON.stringify({ stage: 'waiting_kite', waitReason: 'runner_required', timeline: ['The case is paid. The paper pipeline did not finish.'] }))
+    const message = err instanceof Error ? err.message : 'The paper pipeline did not finish.'
+    console.error('case pipeline failed', message)
+    await saveCaseWork(env.DB, caseId, 'waiting_kite', JSON.stringify({ stage: 'waiting_kite', waitReason: 'pipeline_error', error: message, timeline: [message] }))
   }
 }
 
@@ -593,19 +596,32 @@ async function traceTransfers(
   env: Env,
   chain: 'tron' | 'ethereum' | 'arbitrum' | 'base',
   input: { deposit?: string; amount?: string; asset?: string; date?: string },
-): Promise<Array<{ address: string; raw: string; timeMs: number | null; chain: typeof chain }>> {
-  const keyed = chain === 'tron' ? Boolean(env.TRONGRID_API_KEY) : Boolean(env.ETHERSCAN_API_KEY || env.ALCHEMY_API_KEY)
-  if (!keyed || !input.deposit || !input.amount || !input.asset || !input.date) return []
+): Promise<{ transfers: Array<{ address: string; raw: string; timeMs: number | null; chain: typeof chain }>; depositTimeMs: number | null; labels: Array<{ address: string; exchange: string; name: string; source: string }> }> {
+  const empty = { transfers: [], depositTimeMs: null, labels: [] }
+  const keyed = chain === 'tron' || Boolean(env.ETHERSCAN_API_KEY || env.ALCHEMY_API_KEY)
+  if (!keyed || !input.deposit || !input.amount || !input.asset || !input.date) return empty
   try {
     const hop = await lookupFirstHop(
       { chain, deposit: input.deposit, amount: input.amount, asset: input.asset, date: input.date },
       fetch,
       { etherscanApiKey: env.ETHERSCAN_API_KEY, trongridApiKey: env.TRONGRID_API_KEY, alchemyTransfers: Boolean(env.ALCHEMY_API_KEY) },
     )
-    const addresses = [hop.sender, ...hop.hop1].filter((item): item is string => Boolean(item))
-    return addresses.map((address) => ({ address, raw: '0', timeMs: null, chain }))
+    const transfers = []
+    if (hop.sender) transfers.push({ address: hop.sender, raw: hop.depositRaw ?? '0', timeMs: hop.depositTimeMs, chain })
+    for (const party of hop.hopTransfers) transfers.push({ address: party.address, raw: party.raw, timeMs: party.timeMs, chain })
+    return { transfers, depositTimeMs: hop.depositTimeMs, labels: hop.labels }
   } catch {
-    return []
+    return empty
+  }
+}
+
+function evidenceQuote(resultJson: string | null): string | null {
+  if (!resultJson) return null
+  try {
+    const row = JSON.parse(resultJson) as { evidenceQuote?: unknown }
+    return typeof row.evidenceQuote === 'string' ? row.evidenceQuote : null
+  } catch {
+    return null
   }
 }
 

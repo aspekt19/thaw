@@ -44,6 +44,7 @@ export const CATEGORIES = [
   'sanctions',
   'theft',
   'final_closure',
+  'technical',
   'source_of_funds',
   'additional_verification',
   'edd',
@@ -53,7 +54,7 @@ export const CATEGORIES = [
   'unknown',
 ] as const
 
-export const STOP_CATEGORIES = ['law_enforcement', 'sanctions', 'theft', 'final_closure'] as const
+export const STOP_CATEGORIES = ['law_enforcement', 'sanctions', 'theft', 'final_closure', 'technical'] as const
 
 export const ORDINARY_CATEGORIES = [
   'source_of_funds',

@@ -49,22 +49,44 @@ const HASH = /\b(?:0x)?[a-fA-F0-9]{64}\b/g
 const AMOUNT = /\d+\.\d+|\d{2,}/g
 
 export function grounded(text: string, facts: string): boolean {
+  for (const match of text.matchAll(ADDRESS)) {
+    const piece = match[0]
+    if (piece.startsWith('0x') || piece.startsWith('0X')) {
+      if (!facts.toLowerCase().includes(piece.toLowerCase())) return false
+    } else if (!facts.includes(piece)) return false
+  }
   const hay = facts.toLowerCase()
-  const pieces = [...text.matchAll(ADDRESS), ...text.matchAll(HASH), ...text.matchAll(AMOUNT)].map((match) => match[0])
+  const pieces = [...text.matchAll(HASH), ...text.matchAll(AMOUNT)].map((match) => match[0])
   return pieces.every((piece) => hay.includes(piece.toLowerCase()))
+}
+
+const FACT_TAG = /\[(?:deposit|trace|aml-\d+)\]|\((?:deposit|trace)\)/gi
+const TIER_WORD = /\b(?:light|full)(?:[-\s]?tier)?\b|\btier\b/gi
+const FACT_TAG_TEST = /\[(?:deposit|trace|aml-\d+)\]|\((?:deposit|trace)\)/i
+const TIER_TEST = /\b(?:light|full)[-\s]?tier\b/i
+
+export function cleanClientText(text: string): string {
+  return text.replace(FACT_TAG, '').replace(TIER_WORD, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.])/g, '$1').trim()
 }
 
 export function appealProblem(draft: AppealDraft, factIds: readonly string[]): string | null {
   const blob = `${draft.subject}\n${draft.body}\n${draft.claims.map((claim) => claim.text).join('\n')}`
   if (STOP.test(blob)) return 'promise'
+  if (FACT_TAG_TEST.test(blob) || TIER_TEST.test(blob)) return 'internal'
   if (draft.claims.some((claim) => !factIds.includes(claim.factId))) return 'fact'
   return null
 }
 
-export function templateAppeal(exchange: string, tier: string): AppealDraft {
+function displayExchange(exchange: string): string {
+  const known: Record<string, string> = { htx: 'HTX', okx: 'OKX', crypto_com: 'Crypto.com' }
+  if (known[exchange]) return known[exchange]
+  return exchange.slice(0, 1).toUpperCase() + exchange.slice(1)
+}
+
+export function templateAppeal(exchange: string, _tier: string): AppealDraft {
   return {
-    subject: `Source-of-funds note for ${exchange}`,
-    body: `Please find the records we can attach for this ${tier} file. This note is document preparation, not legal advice. It does not ask the exchange to promise a release, and it does not predict one. Only the exchange decides.`,
+    subject: `Source-of-funds note for ${displayExchange(exchange)}`,
+    body: 'Please find the records we can attach for this file. This note is document preparation, not legal advice. It does not ask the exchange to promise a release, and it does not predict one. Only the exchange decides.',
     attachments: ['Deposit trace', 'Timeline'],
     claims: [{ text: 'A deposit trace was prepared for this case.', factId: 'trace' }],
     source: 'template',
@@ -105,8 +127,9 @@ export async function draftAppeal(
   const ask = async () =>
     servStructured(
       {
-        system: `Draft a short appeal letter in English. ${UNTRUSTED_RULE} Do not promise or predict a release, do not threaten, and do not invent facts or documents. Every claim must cite a provided fact id. ${APPEAL_VERSION}`,
-        user: fence(JSON.stringify({ exchange, tier, facts }), 12000),
+        system: `Draft a short appeal letter in English. ${UNTRUSTED_RULE} Do not promise or predict a release, do not threaten, and do not invent facts or documents. Do not mention package names, tiers, or fact ids in the subject or body. Copy every TRON address exactly, including capital letters. Every claim must cite a provided fact id. ${APPEAL_VERSION}`,
+        user: fence(JSON.stringify({ exchange: displayExchange(exchange), facts }), 12000),
+        timeoutMs: 40_000,
         schemaName: 'appeal_draft',
         jsonSchema: APPEAL_SCHEMA,
         model: servModel('SERV_GRAPH_ID_APPEAL'),
@@ -136,8 +159,15 @@ export async function draftAppeal(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const result = await ask()
-      const draft = { ...result.data, meta: result.meta }
-      if (!appealProblem(draft, facts.ids)) return draft
+      const draft = {
+        ...result.data,
+        subject: cleanClientText(result.data.subject),
+        body: cleanClientText(result.data.body),
+        claims: result.data.claims.map((claim) => ({ ...claim, text: cleanClientText(claim.text) })),
+        meta: result.meta,
+      }
+      const packed = JSON.stringify(facts)
+      if (!appealProblem(draft, facts.ids) && grounded(`${draft.subject}\n${draft.body}`, packed)) return draft
     } catch {
       continue
     }

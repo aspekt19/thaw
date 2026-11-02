@@ -206,14 +206,16 @@ export function createFetchComplete(fetchImpl: typeof fetch = fetch): ServComple
   return async (body) => {
     const apiKey = readServApiKey()
     const model = typeof body.model === 'string' ? body.model : ''
+    const asked = typeof body.timeout_ms === 'number' ? body.timeout_ms : model.startsWith('gr_') ? graphTimeoutMs() : 20_000
+    const rest = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'timeout_ms'))
     const response = await fetchImpl(SERV_RESPONSES_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(model.startsWith('gr_') ? graphTimeoutMs() : 20_000),
+      body: JSON.stringify(rest),
+      signal: AbortSignal.timeout(asked),
     })
     if (!response.ok) {
       throw new Error(`SERV Reasoning HTTP ${response.status}`)
@@ -268,6 +270,7 @@ export async function servStructured<T>(
     reasoningEffort?: ServReasoningEffort
     servTools?: ServToolsOptions
     promptVersion?: string
+    timeoutMs?: number
   },
   complete: ServComplete = createFetchComplete(),
 ): Promise<{ data: T; meta: ServMeta }> {
@@ -284,14 +287,17 @@ export async function servStructured<T>(
     },
   }
   return withGraphFallback(model, async (chosen) => {
-    const response = await complete(responsesBody({
-      model: chosen,
-      system: params.system,
-      user: params.user,
-      reasoningEffort,
-      tools,
-      text: textFormat,
-    }))
+    const response = await complete({
+      ...responsesBody({
+        model: chosen,
+        system: params.system,
+        user: params.user,
+        reasoningEffort,
+        tools,
+        text: textFormat,
+      }),
+      ...(params.timeoutMs ? { timeout_ms: params.timeoutMs } : {}),
+    })
     const read = readServText(response)
     const finishReason = read.finishReason
     if (finishReason === 'length') throw new Error('SERV Reasoning response truncated (finish_reason=length)')

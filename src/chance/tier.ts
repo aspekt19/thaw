@@ -27,12 +27,13 @@ export interface TierInput {
   // HTX (Yura decisions 2026-11-01 15:49 and 15:58): decline only for clients living in the UK/EU.
   clientCountry?: string;                 // ISO-2 country of RESIDENCE, e.g. "DE", "GB", "TR", "US" (citizenship not used)
   htxLinked?: boolean;                    // funds came from / went to HTX (exchange may be another one)
+  firstHopOk?: boolean;                   // false when the first hop was not read
 }
 
 export type RuleId =
   | "LOW_POLICY_FULL" | "PRIOR_REJECTION" | "OWNERSHIP_REQUESTED" | "OKX_TXID_ONLY"
   | "COMPLEX_SOURCES" | "MANY_DEPOSITS" | "MANY_DOCS_REQUESTED" | "MANY_ADDRESSES"
-  | "LIGHT_OVER_BUDGET" | "TRAVEL_RULE_LIGHT" | "LIGHT_DEFAULT";
+  | "LIGHT_OVER_BUDGET" | "TRAVEL_RULE_LIGHT" | "HOP_UNREAD" | "LIGHT_DEFAULT";
 export type RefusalReason = "NOT_ELIGIBLE" | "HTX_UK_EU_CLIENT";
 export type Flag =
   | "FULL_BUDGET_GUARD" | "GENERIC_EXCHANGE" | "KUCOIN_LANGUAGE" | "ADDRESSES_UNKNOWN"
@@ -158,6 +159,7 @@ export function recommendTier(i: TierInput, c: TierConfig = DEFAULT_CONFIG): Tie
     ["MANY_DOCS_REQUESTED", new Set(i.requestedDocs).size > c.maxLightRequestedDocs || i.requestedDocs.includes("source_of_wealth")],
     ["MANY_ADDRESSES", addr > c.maxLightAddresses],
     ["LIGHT_OVER_BUDGET", est.light > cap.light],
+    ["HOP_UNREAD", i.firstHopOk === false],
   ];
   const fullHits = rules.filter(([, hit]) => hit).map(([id]) => id);
   const lightAllowed = !fullHits.includes("LIGHT_OVER_BUDGET");
@@ -253,6 +255,7 @@ export const REASON_LINE: Record<RuleId, string> = {
   LIGHT_OVER_BUDGET: 'Your case needs more screening work than the Light case allows, so we recommend the Full case.',
   TRAVEL_RULE_LIGHT: "Your funds are on hold because of the exchange's Travel Rule check, so the Light case should cover the sender and recipient details the exchange asked for.",
   LIGHT_DEFAULT: 'Your case looks simple: one or two deposits with clear sources, so the Light case should cover what the exchange asked for.',
+  HOP_UNREAD: 'The first hop of the deposit was not read, so the sources are not clear and we recommend the Full case.',
 }
 
 export const REFUSAL_LINE: Record<RefusalReason, string> = {
@@ -276,6 +279,7 @@ export const MISSING_LINE: Record<RuleId, string> = {
   LOW_POLICY_FULL: 'screening of every address with several providers',
   TRAVEL_RULE_LIGHT: 'the extra Full-case steps',
   LIGHT_DEFAULT: 'the extra Full-case steps',
+  HOP_UNREAD: 'a first hop that was read',
 }
 
 export const TIER_NOTE = "This is document preparation only, not legal advice, and no one can guarantee the exchange's decision."

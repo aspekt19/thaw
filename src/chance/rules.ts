@@ -5,6 +5,7 @@ export const REASON = {
   sanctions: 'The notice mentions sanctions.',
   theft: 'The notice links the funds to theft or a victim report.',
   closure: 'The notice says the account is finally closed.',
+  technical: 'The notice describes a technical problem, not an AML review. Our papers do not cover that.',
   servStop: 'The notice was classed as a case we decline, and the rules kept that.',
   banned: 'The address check returned a ban. That answer does not split a blacklist from sanctions.',
   ordinary: 'The notice reads as an ordinary source-of-funds check, with no stop phrase from the list.',
@@ -50,6 +51,7 @@ const STOP_REASON: Record<(typeof STOP_CATEGORIES)[number], string> = {
   sanctions: REASON.sanctions,
   theft: REASON.theft,
   final_closure: REASON.closure,
+  technical: REASON.technical,
 }
 
 export type BanState = 'clean' | 'banned' | 'disabled' | 'unpaid' | 'unavailable' | 'not_checked' | 'unsupported'
@@ -68,6 +70,7 @@ export type RuleFacts = {
   origin: Origin
   hasDocuments: boolean | null
   priorRefusal: boolean
+  servQuote?: string | null
 }
 
 export type RuleDecision = {
@@ -95,9 +98,16 @@ export function decide(facts: RuleFacts): RuleDecision {
   const reasons: string[] = []
   const stops = facts.categories.filter(isStop)
   if (stops.length > 0) {
-    for (const stop of stops) reasons.push(STOP_REASON[stop])
-    const fromModel = stops.some((stop) => facts.servOnly.includes(stop))
     const fromLexicon = stops.some((stop) => !facts.servOnly.includes(stop))
+    const fromModel = stops.some((stop) => facts.servOnly.includes(stop))
+    if (fromModel && !fromLexicon) {
+      const quote = facts.servQuote?.trim()
+      reasons.push(quote
+        ? `The model classed this notice as ${stops.join(', ')}. That is not a phrase from our list. Quote: ${quote}`
+        : `The model classed this notice as ${stops.join(', ')}. That is not a phrase from our list.`)
+    } else {
+      for (const stop of stops) if (!facts.servOnly.includes(stop)) reasons.push(STOP_REASON[stop])
+    }
     if (fromModel && !fromLexicon) reasons.push(REASON.servStop)
     const raise = stops.includes('law_enforcement')
       ? [RAISE.lawyer, RAISE.noHelp]
@@ -122,7 +132,7 @@ export function decide(facts: RuleFacts): RuleDecision {
   const ordinary = facts.categories.some(isOrdinary)
   reasons.push(ordinary ? REASON.ordinary : REASON.vague)
   reasons.push(REASON.exchangeIgnored)
-  reasons.push(REASON.pageLimit)
+  if (facts.firstHopOk) reasons.push(REASON.pageLimit)
 
   const low: string[] = []
   if (facts.priorRefusal) low.push(REASON.prior)

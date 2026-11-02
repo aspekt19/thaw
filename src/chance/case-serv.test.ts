@@ -14,6 +14,10 @@ describe('case SERV checks', () => {
     const ok: ServComplete = async () => ({ output_text: 'The deposit of 10.5 USDT on 2026-11-01 is the one in the notice. This is document preparation, not a promise of release.' })
     assert.equal((await explainTrigger(facts, ok)).source, 'serv')
     assert.equal(grounded('amount 10.5', JSON.stringify(facts)), true)
+    const tron = `T${'A'.repeat(33)}`
+    const packed = JSON.stringify({ sender: tron })
+    assert.equal(grounded(tron, packed), true)
+    assert.equal(grounded(`${tron.slice(0, 10)}a${tron.slice(11)}`, packed), false)
   })
 
   it('rejects an appeal that promises a release or cites a missing fact, then uses the template', async () => {
@@ -33,7 +37,10 @@ describe('case SERV checks', () => {
     const draft = await draftAppeal(facts, 'binance', 'light', bad)
     assert.equal(calls, 2)
     assert.equal(draft.source, 'template')
-    assert.equal(appealProblem(templateAppeal('binance', 'light'), ['trace']), null)
+    const note = templateAppeal('bybit', 'light')
+    assert.match(note.subject, /Bybit/)
+    assert.equal(note.body.includes('light'), false)
+    assert.equal(appealProblem(note, ['trace']), null)
     const missing: ServComplete = async () => ({
       output_text: JSON.stringify({
         subject: 'Appeal',
