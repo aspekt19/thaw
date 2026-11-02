@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit && tsc -p packages/guard/tsconfig.json --noEmit",
-    "test": "SERV_LOG=0 tsx --test packages/guard/src/*.test.ts src/chance/*.test.ts src/captcha.test.ts src/http/*.test.ts src/db/*.test.ts src/pay/*.test.ts src/chain/*.test.ts",
+    "test": "SERV_LOG=0 tsx --test packages/guard/src/*.test.ts src/chance/*.test.ts src/kite/*.test.ts src/case/*.test.ts src/captcha.test.ts src/http/*.test.ts src/db/*.test.ts src/pay/*.test.ts src/chain/*.test.ts",
     "build": "tsc --noEmit && tsc -p packages/guard/tsconfig.json && vite build"
   },
   "devDependencies": {

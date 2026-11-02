@@ -141,10 +141,15 @@ type CaseInvoice = {
   verdict?: string | null
   coverNote?: string | null
   lowConfirmedAt?: number | null
+  caseToken?: string
+  stage?: string
+  timeline?: string[]
+  trigger?: string | null
 }
 
 const ORDER_KEY = 'thaw.order'
 const CASE_KEY = 'thaw.case'
+const CASE_TOKEN_KEY = 'thaw.caseToken'
 const PENDING_KEY = 'thaw.pendingCase'
 const TX_KEY = 'thaw.tx'
 const CASE_TX_KEY = 'thaw.caseTx'
@@ -710,6 +715,7 @@ async function openCase(tier: 'light' | 'full', button: HTMLButtonElement, confi
     return
   }
   sessionStorage.setItem(CASE_KEY, body.caseId)
+  if (body.caseToken) sessionStorage.setItem(CASE_TOKEN_KEY, body.caseToken)
   sessionStorage.removeItem(CASE_TX_KEY)
   sessionStorage.removeItem(PENDING_KEY)
   if (location.hash === '#case') void paintCase()
@@ -731,7 +737,7 @@ async function paintCase(): Promise<void> {
     root.append(heading('No file invoice'), paragraph('Open a file from the chance result.'))
     return
   }
-  const row = await getJson<CaseInvoice>(`/api/cases/${id}`)
+  const row = await getJson<CaseInvoice>(`/api/cases/${id}`, caseHeaders())
   if (!row?.caseId) {
     root.append(heading('File not found'), paragraph(say(row?.code, row?.error)))
     return
@@ -784,6 +790,9 @@ function appendCaseNotes(root: Element, row: CaseInvoice): void {
     root.append(note)
   }
   if (row.tier === 'light') root.append(paragraph(upgradeOfferText()))
+  if (row.stage) root.append(paragraph(`Case stage: ${row.stage.replaceAll('_', ' ')}.`))
+  for (const line of row.timeline ?? []) root.append(paragraph(line))
+  if (row.trigger) root.append(paragraph(row.trigger))
 }
 
 function readPending(): { orderId: string; tier: 'light' | 'full' } | null {
@@ -834,7 +843,7 @@ async function paintLowGate(root: Element, pending: { orderId: string; tier: 'li
 async function refreshCase(id: string): Promise<void> {
   const tx = sessionStorage.getItem(CASE_TX_KEY)
   if (tx) await confirm(`/api/cases/${id}/confirm`, tx, CASE_TX_KEY, true)
-  const row = await getJson<CaseInvoice>(`/api/cases/${id}`)
+  const row = await getJson<CaseInvoice>(`/api/cases/${id}`, caseHeaders())
   const title = document.querySelector('#case-root h1')?.textContent ?? ''
   if (row?.paid && !/paid/i.test(title)) void paintCase()
 }
@@ -930,7 +939,7 @@ async function confirm(url: string, tx: string, key: string, quiet = false): Pro
   sessionStorage.setItem(key, tx)
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: { 'content-type': 'application/json', accept: 'application/json', ...(url.includes('/cases/') ? caseHeaders() : {}) },
     body: JSON.stringify({ txHash: tx }),
   })
   const body = (await response.json()) as { code?: string; error?: string; paid?: boolean; ok?: boolean; verdict?: string }
@@ -1012,9 +1021,14 @@ function tierName(tier: string | undefined): string {
   return tier === 'full' ? 'The full file' : 'The light file'
 }
 
-async function getJson<T>(url: string): Promise<T | null> {
+function caseHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem(CASE_TOKEN_KEY)
+  return token ? { authorization: `Bearer ${token}`, 'x-case-token': token } : {}
+}
+
+async function getJson<T>(url: string, extra: Record<string, string> = {}): Promise<T | null> {
   try {
-    const response = await fetch(url, { headers: { accept: 'application/json' } })
+    const response = await fetch(url, { headers: { accept: 'application/json', ...extra } })
     return (await response.json()) as T
   } catch {
     return null

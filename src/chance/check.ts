@@ -3,6 +3,7 @@ import {
   fence,
   servChat,
   servInjectionCheck,
+  servModel,
   servStructured,
   sha256Hex,
   signEd25519,
@@ -41,8 +42,9 @@ const NOTICE_SCHEMA = {
   additionalProperties: false,
   properties: {
     category: { type: 'string', enum: [...CATEGORY_LIST] },
+    evidence_quote: { type: 'string' },
   },
-  required: ['category'],
+  required: ['category', 'evidence_quote'],
 }
 
 const PROMISE = [/гарантир/i, /разморозим/i, /we guarantee/i, /promise to unfreeze/i, /верн[её]м средства/i]
@@ -443,25 +445,30 @@ export function createServHooks(complete: ServComplete): ServHooks {
     },
     async classify(notice) {
       const fenced = fence(notice, 8000)
+      try {
       const result = await servStructured(
         {
-          system: `You classify an exchange freeze notice. ${UNTRUSTED_RULE} Pick one category. Do not give legal advice and do not promise that funds will be released. thaw.notice.v1`,
+          system: `You classify an exchange freeze notice. ${UNTRUSTED_RULE} Pick one category. evidence_quote must be a verbatim substring of the notice. Do not give legal advice and do not promise that funds will be released. thaw.notice.v1`,
           user: fenced,
           schemaName: 'notice_category',
           jsonSchema: NOTICE_SCHEMA,
+          model: servModel('SERV_GRAPH_ID_NOTICE'),
           promptVersion: 'thaw.notice.v1',
           servTools: { promptGuard: true },
           parse: (value) => {
-            const category = (value as { category?: string }).category
-            if (!category || !(CATEGORY_LIST as readonly string[]).includes(category)) {
-              throw new Error('bad category')
-            }
-            return category as Category
+            const row = value as { category?: string; evidence_quote?: string }
+            if (!row.category || !(CATEGORY_LIST as readonly string[]).includes(row.category)) throw new Error('bad category')
+            const quote = row.evidence_quote?.trim() ?? ''
+            if (!quote || !notice.includes(quote)) throw new Error('quote not in notice')
+            return row.category as Category
           },
         },
         complete,
       )
       return result.data
+      } catch {
+        return null
+      }
     },
     async explain(verdict, reasons) {
       const fenced = fence(JSON.stringify({ verdict, reasons }), 4000)

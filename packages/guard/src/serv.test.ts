@@ -15,7 +15,7 @@ describe('serv client', () => {
       body = sent
       return {
         model: 'gpt-5.4-mini',
-        choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+        output_text: 'ok',
       }
     }
     const result = await servChat(
@@ -29,14 +29,16 @@ describe('serv client', () => {
     )
     assert.equal(result.text, 'ok')
     assert.equal(result.meta.promptVersion, 'thaw.test')
-    const tools = body?.tools as Array<{ function: { name: string } }>
-    assert.equal(tools[0]?.function.name, 'serv_prompt_guard')
-    assert.equal(body?.reasoning_effort, 'low')
+    const tools = body?.tools as Array<{ name: string }>
+    assert.equal(tools[0]?.name, 'serv_prompt_guard')
+    assert.equal((body?.reasoning as { effort?: string } | undefined)?.effort, 'low')
+    assert.equal(body?.instructions, 'sys')
+    assert.equal(body?.input, 'user')
   })
 
   it('parses a structured response and rejects a refusal', async () => {
     const complete: ServComplete = async () => ({
-      choices: [{ finish_reason: 'stop', message: { content: '{"category":"unknown"}' } }],
+      output_text: '{"category":"unknown"}',
     })
     const good = await servStructured(
       {
@@ -55,7 +57,7 @@ describe('serv client', () => {
     assert.equal(good.data, 'unknown')
 
     const refused: ServComplete = async () => ({
-      choices: [{ finish_reason: 'stop', message: { refusal: 'no', content: null } }],
+      output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }],
     })
     await assert.rejects(() =>
       servStructured(
@@ -74,6 +76,6 @@ describe('serv client', () => {
   it('builds a shadow-agent tool only when asked', () => {
     assert.deepEqual(buildServTools({}), [])
     const tools = buildServTools({ shadowAgent: { hint: 'stay', maxIterations: 2 } })
-    assert.equal(tools[0]?.function.name, 'serv_shadow_agent')
+    assert.equal(tools[0]?.name, 'serv_shadow_agent')
   })
 })

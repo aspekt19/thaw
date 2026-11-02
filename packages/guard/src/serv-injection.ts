@@ -6,7 +6,7 @@
  * The model name is the source default (gpt-6-luna), overridable with SERV_GUARD_MODEL.
  */
 import { fenceRaw, UNTRUSTED_RULE } from './fence.ts'
-import { SERV_BASE_URL, readServApiKey, type ServComplete, type ServResponse } from './serv.ts'
+import { SERV_RESPONSES_URL, readServApiKey, readServText, type ServComplete, type ServResponse } from './serv.ts'
 import type { ServSignal } from './ported/types.ts'
 
 export const SERV_GUARD_CHAT_MODEL = 'gpt-6-luna'
@@ -32,7 +32,7 @@ const INJECTION_SCHEMA = {
 function defaultComplete(timeoutMs: number): ServComplete {
   return async (body) => {
     const apiKey = readServApiKey()
-    const response = await fetch(`${SERV_BASE_URL}/chat/completions`, {
+    const response = await fetch(SERV_RESPONSES_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -51,35 +51,28 @@ export async function servInjectionCheck(body: string, complete?: ServComplete |
   if (!complete && !process.env.SERV_API_KEY?.trim()) {
     return { status: 'unavailable', reason: 'no SERV key configured', graphId: null }
   }
-  const model = servGuardChatModel()
+  const graph = process.env.SERV_GRAPH_ID_GUARD?.trim()
+  const model = graph ? (graph.startsWith('gr_') ? graph : `gr_${graph}`) : servGuardChatModel()
   const via = `serv:${model}`
   try {
     const response = await (complete ?? defaultComplete(timeoutMs))({
       model,
-      reasoning_effort: 'none',
-      messages: [
-        {
-          role: 'system',
-          content: `${INJECTION_INSTRUCTIONS} ${UNTRUSTED_RULE} Reply with that JSON object only, using exactly the key "verdict" and one of the listed words.`,
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({ check: 'response_injection', response_untrusted: fenceRaw(body, 12_000) }),
-        },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
+      instructions: `${INJECTION_INSTRUCTIONS} ${UNTRUSTED_RULE} Reply with that JSON object only, using exactly the key "verdict" and one of the listed words.`,
+      input: JSON.stringify({ check: 'response_injection', response_untrusted: fenceRaw(body, 12_000) }),
+      reasoning: { effort: 'none' },
+      text: {
+        format: {
+          type: 'json_schema',
           name: 'serv_injection',
           strict: true,
           schema: INJECTION_SCHEMA,
         },
       },
-      tools: [{ type: 'function', function: { name: 'serv_disable_content_filter' } }],
+      tools: [{ type: 'function', name: 'serv_disable_content_filter' }],
     })
-    const choice = response.choices?.[0]
-    if (choice?.message?.refusal) return { status: 'unavailable', reason: 'SERV declined to answer', graphId: via }
-    const text = choice?.message?.content
+    const read = readServText(response)
+    if (read.refusal) return { status: 'unavailable', reason: 'SERV declined to answer', graphId: via }
+    const text = read.text
     if (!text) return { status: 'unavailable', reason: 'SERV answer had no readable verdict', graphId: via }
     let parsed: unknown
     try {

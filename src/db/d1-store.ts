@@ -118,6 +118,9 @@ export type CaseRow = {
   amount_atomic: string | null
   tx_hash: string | null
   low_confirmed_at: number | null
+  case_token_hash: string | null
+  stage: string
+  work_json: string | null
 }
 
 export async function insertCase(
@@ -195,5 +198,31 @@ export async function consumeCasePayment(db: SqlDb, args: { chain: string; txHas
     return row?.status === 'paid'
   } catch {
     return false
+  }
+}
+
+export async function setCaseToken(db: SqlDb, id: string, hash: string): Promise<void> {
+  await db.prepare('UPDATE cases SET case_token_hash = ? WHERE id = ? AND case_token_hash IS NULL').bind(hash, id).run()
+}
+
+export async function saveCaseWork(db: SqlDb, id: string, stage: string, workJson: string): Promise<void> {
+  await db.prepare('UPDATE cases SET stage = ?, work_json = ? WHERE id = ?').bind(stage, workJson, id).run()
+}
+
+export async function spentMicro(db: SqlDb, where: { caseId?: string; since?: number }): Promise<number> {
+  const row = where.caseId
+    ? await db.prepare("SELECT COALESCE(SUM(amount_micro), 0) AS micro FROM case_spend WHERE case_id = ? AND outcome = 'paid'").bind(where.caseId).first<{ micro: number }>()
+    : await db.prepare("SELECT COALESCE(SUM(amount_micro), 0) AS micro FROM case_spend WHERE created_at >= ? AND outcome = 'paid'").bind(where.since ?? 0).first<{ micro: number }>()
+  return Number(row?.micro ?? 0)
+}
+
+export async function insertSpend(db: SqlDb, row: { caseId: string; source: string; endpoint: string; amountMicro: number; idempotencyKey: string; outcome: string; createdAt: number }): Promise<void> {
+  try {
+    await db
+      .prepare('INSERT INTO case_spend (id, case_id, source, endpoint, amount_micro, idempotency_key, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(row.idempotencyKey, row.caseId, row.source, row.endpoint, row.amountMicro, row.idempotencyKey, row.outcome, row.createdAt)
+      .run()
+  } catch {
+    // The same check was already logged.
   }
 }

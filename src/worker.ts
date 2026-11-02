@@ -6,7 +6,11 @@ import { defaultLimitConfig } from './chance/limits.ts'
 import { parseChanceInput, type ChanceInput } from './chance/parse.ts'
 import { captchaRequired, verifyCaptchaToken } from './captcha.ts'
 import { createRpc, rpcUrls, type RpcChain } from './chain/evm-rpc.ts'
-import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, updatePaidResult, type CaseRow } from './db/d1-store.ts'
+import { runPaidCase } from './case/pipeline.ts'
+import { createHttpKiteExecutor, createRunnerExecutor } from './kite/executor.ts'
+import { DEFAULT_DAILY_CAP_MICRO } from './kite/guard.ts'
+import { lookupFirstHop } from './chance/lookup.ts'
+import { consumeCasePayment, consumePayment, d1LimitStore, getCase, getCaseForOrder, getOrder, insertCaseInvoice, insertOrder, insertSpend, saveCaseWork, setCaseToken, spentMicro, updatePaidResult, type CaseRow } from './db/d1-store.ts'
 import type { SqlDb } from './db/sql.ts'
 import { LOW_CHANCE_WARNINGS, NEED_COUNTRY_NOTE, choiceResult, chooseTier } from './chance/tier.ts'
 import { checkPriceMicro, isPaymentChain, parseUsdToMicro, paymentRpc, USDC_CONTRACT, verifyUsdcTransfer, type PaymentChain } from './pay/usdc.ts'
@@ -33,6 +37,12 @@ export interface Env {
   THAW_RPC_URL_ETHEREUM?: string
   THAW_RPC_URL_BASE?: string
   THAW_RPC_URL_ARBITRUM?: string
+  THAW_KITE_ENABLED?: string
+  THAW_KITE_DAILY_CAP_USD?: string
+  KITE_SESSION_ID?: string
+  KITE_SESSION_EXPIRES_AT?: string
+  KITE_HTTP_EXECUTE_URL?: string
+  THAW_REVIEW_TOKEN?: string
 }
 
 const ENV_KEYS = [
@@ -55,6 +65,12 @@ const ENV_KEYS = [
   'THAW_RPC_URL_ETHEREUM',
   'THAW_RPC_URL_BASE',
   'THAW_RPC_URL_ARBITRUM',
+  'THAW_KITE_ENABLED',
+  'THAW_KITE_DAILY_CAP_USD',
+  'KITE_SESSION_ID',
+  'KITE_SESSION_EXPIRES_AT',
+  'KITE_HTTP_EXECUTE_URL',
+  'THAW_REVIEW_TOKEN',
 ] as const
 
 function applyEnv(env: Env): void {
@@ -148,10 +164,15 @@ export async function handleApi(request: Request, env: Env): Promise<Response | 
     if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
     return confirmCase(request, env, decodeURIComponent(caseConfirm[1] ?? ''))
   }
+  const review = /^\/(?:api|v1)\/cases\/([^/]+)\/review$/.exec(path)
+  if (review) {
+    if (request.method !== 'POST') return json({ ok: false, code: 'method', error: 'Use POST.' }, 405)
+    return reviewCase(request, env, decodeURIComponent(review[1] ?? ''))
+  }
   const caseRead = /^\/(?:api|v1)\/cases\/([^/]+)$/.exec(path)
   if (caseRead) {
     if (request.method !== 'GET') return json({ ok: false, code: 'method', error: 'Use GET.' }, 405)
-    return readCase(env, decodeURIComponent(caseRead[1] ?? ''))
+    return readCase(request, env, decodeURIComponent(caseRead[1] ?? ''))
   }
   if (path === '/api/check-chance' || path === '/v1/check-chance') {
     return json(
@@ -401,14 +422,37 @@ async function openCase(request: Request, env: Env): Promise<Response> {
     if (!ok) continue
     const saved = await getCase(env.DB, id)
     if (!saved) return json({ ok: false, code: 'internal', error: 'The case was not stored.' }, 500)
-    return json(await casePayload(env, saved, false), 201)
+    const caseToken = await issueCaseToken(env, saved.id)
+    if (saved.status === 'paid') await settlePaidCase(env, saved.id)
+    const fresh = await getCase(env.DB, id)
+    return json({ ...(await casePayload(env, fresh ?? saved, false)), caseToken }, 201)
   }
   return json({ ok: false, code: 'amount', error: 'Could not reserve a unique amount. Try again.' }, 503)
 }
 
-async function readCase(env: Env, caseId: string): Promise<Response> {
+async function reviewCase(request: Request, env: Env, caseId: string): Promise<Response> {
+  const expected = env.THAW_REVIEW_TOKEN?.trim() ?? ''
+  const got = request.headers.get('x-review-token') ?? ''
+  if (!expected || !sameText(expected, got)) return json({ ok: false, code: 'review', error: 'A reviewer has to accept the draft before it is shown.' }, 403)
   const row = await getCase(env.DB, caseId)
   if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
+  if (!(await caseTokenOk(request, row))) return json({ ok: false, code: 'case_token', error: 'Send the case token from when the case was opened.' }, 401)
+  let work: Record<string, unknown> = {}
+  try {
+    work = row.work_json ? (JSON.parse(row.work_json) as Record<string, unknown>) : {}
+  } catch {
+    work = {}
+  }
+  work.stage = 'ready'
+  await saveCaseWork(env.DB, caseId, 'ready', JSON.stringify(work))
+  const fresh = await getCase(env.DB, caseId)
+  return json(await casePayload(env, fresh ?? row, false), 200)
+}
+
+async function readCase(request: Request, env: Env, caseId: string): Promise<Response> {
+  const row = await getCase(env.DB, caseId)
+  if (!row) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
+  if (!(await caseTokenOk(request, row))) return json({ ok: false, code: 'case_token', error: 'Send the case token from when the case was opened.' }, 401)
   return json(await casePayload(env, row, false), 200)
 }
 
@@ -441,7 +485,9 @@ async function confirmCase(request: Request, env: Env, caseId: string): Promise<
   if (!stored) return json({ ok: false, code: 'reused', error: 'That transfer was already used.' }, 409)
   const paid = await getCase(env.DB, row.id)
   if (!paid) return json({ ok: false, code: 'not_found', error: 'Case not found.' }, 404)
-  return json(await casePayload(env, paid, false), 200)
+  await settlePaidCase(env, paid.id)
+  const settled = await getCase(env.DB, paid.id)
+  return json(await casePayload(env, settled ?? paid, false), 200)
 }
 
 async function casePayload(env: Env, row: CaseRow, existing: boolean): Promise<Record<string, unknown>> {
@@ -460,6 +506,103 @@ async function casePayload(env: Env, row: CaseRow, existing: boolean): Promise<R
     verdict,
     coverNote: cover?.text ?? null,
     lowConfirmedAt: row.low_confirmed_at,
+  }
+}
+
+async function issueCaseToken(env: Env, caseId: string): Promise<string> {
+  const token = `thc_${crypto.randomUUID().replaceAll('-', '')}${crypto.randomUUID().replaceAll('-', '')}`
+  await setCaseToken(env.DB, caseId, await sha256(token))
+  return token
+}
+
+async function caseTokenOk(request: Request, row: CaseRow): Promise<boolean> {
+  if (!row.case_token_hash) return false
+  const header = request.headers.get('x-case-token') ?? ''
+  const bearer = request.headers.get('authorization') ?? ''
+  const presented = header || (bearer.toLowerCase().startsWith('bearer ') ? bearer.slice(7).trim() : '')
+  if (!presented) return false
+  return sameText(await sha256(presented), row.case_token_hash)
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function sameText(left: string, right: string): boolean {
+  if (left.length !== right.length) return false
+  let diff = 0
+  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i)
+  return diff === 0
+}
+
+async function settlePaidCase(env: Env, caseId: string): Promise<void> {
+  const row = await getCase(env.DB, caseId)
+  const order = row ? await getOrder(env.DB, row.order_id) : null
+  if (!row || !order || row.status !== 'paid') return
+  let input: { exchange?: string; chain?: string; deposit?: string; amount?: string; asset?: string; date?: string }
+  try {
+    input = JSON.parse(order.input_json) as typeof input
+  } catch {
+    input = {}
+  }
+  const chain = input.chain === 'tron' || input.chain === 'ethereum' || input.chain === 'arbitrum' || input.chain === 'base' ? input.chain : 'tron'
+  const tier = row.tier === 'full' ? 'full' : 'light'
+  const dailyCap = Number(env.THAW_KITE_DAILY_CAP_USD ?? '10')
+  const dailyCapMicro = Number.isFinite(dailyCap) && dailyCap > 0 ? Math.round(dailyCap * 1_000_000) : DEFAULT_DAILY_CAP_MICRO
+  const expires = env.KITE_SESSION_EXPIRES_AT ? Number(env.KITE_SESSION_EXPIRES_AT) : null
+  const executor = env.KITE_HTTP_EXECUTE_URL ? createHttpKiteExecutor(fetch, env.KITE_HTTP_EXECUTE_URL) : createRunnerExecutor()
+  try {
+    const work = await runPaidCase(
+      {
+        caseId,
+        tier,
+        exchange: input.exchange ?? 'exchange',
+        chain,
+        deposit: input.deposit ?? '',
+        amount: input.amount ?? '',
+        asset: input.asset ?? '',
+        date: input.date ?? '',
+        transfers: await traceTransfers(env, chain, input),
+        depositTimeMs: null,
+      },
+      {
+        now: () => Date.now(),
+        kiteEnabled: env.THAW_KITE_ENABLED === '1',
+        sessionId: env.KITE_SESSION_ID,
+        sessionExpiresAt: expires != null && Number.isFinite(expires) ? expires : null,
+        dailyCapMicro,
+        caseSpentMicro: await spentMicro(env.DB, { caseId }),
+        daySpentMicro: await spentMicro(env.DB, { since: Date.now() - 86_400_000 }),
+        executor,
+        serv: env.SERV_API_KEY ? createFetchComplete() : null,
+        recordSpend: (spend) => insertSpend(env.DB, spend),
+      },
+    )
+    await saveCaseWork(env.DB, caseId, work.stage, JSON.stringify(work))
+  } catch (err) {
+    console.error('case pipeline failed', err instanceof Error ? err.name : 'error')
+    await saveCaseWork(env.DB, caseId, 'waiting_kite', JSON.stringify({ stage: 'waiting_kite', waitReason: 'runner_required', timeline: ['The case is paid. The paper pipeline did not finish.'] }))
+  }
+}
+
+async function traceTransfers(
+  env: Env,
+  chain: 'tron' | 'ethereum' | 'arbitrum' | 'base',
+  input: { deposit?: string; amount?: string; asset?: string; date?: string },
+): Promise<Array<{ address: string; raw: string; timeMs: number | null; chain: typeof chain }>> {
+  const keyed = chain === 'tron' ? Boolean(env.TRONGRID_API_KEY) : Boolean(env.ETHERSCAN_API_KEY || env.ALCHEMY_API_KEY)
+  if (!keyed || !input.deposit || !input.amount || !input.asset || !input.date) return []
+  try {
+    const hop = await lookupFirstHop(
+      { chain, deposit: input.deposit, amount: input.amount, asset: input.asset, date: input.date },
+      fetch,
+      { etherscanApiKey: env.ETHERSCAN_API_KEY, trongridApiKey: env.TRONGRID_API_KEY, alchemyTransfers: Boolean(env.ALCHEMY_API_KEY) },
+    )
+    const addresses = [hop.sender, ...hop.hop1].filter((item): item is string => Boolean(item))
+    return addresses.map((address) => ({ address, raw: '0', timeMs: null, chain }))
+  } catch {
+    return []
   }
 }
 
@@ -484,6 +627,36 @@ function caseView(env: Env, row: CaseRow, existing: boolean): Record<string, unk
     recipient: env.THAW_USDC_ADDRESS?.trim() ?? '',
     amountAtomic: row.amount_atomic,
     amountUsd: row.amount_atomic ? (Number(row.amount_atomic) / 1_000_000).toFixed(6) : null,
+    stage: row.stage || (row.status === 'paid' ? 'paid' : 'awaiting_payment'),
+    ...publicWork(row),
+  }
+}
+
+function publicWork(row: CaseRow): Record<string, unknown> {
+  if (!row.work_json) return {}
+  try {
+    const work = JSON.parse(row.work_json) as {
+      stage?: string
+      waitReason?: string | null
+      timeline?: string[]
+      screened?: number
+      skipped?: number
+      trigger?: { text?: string; source?: string }
+      appeal?: { subject?: string; body?: string } | null
+      pdfBase64?: string
+    }
+    const ready = work.stage === 'ready'
+    return {
+      waitReason: work.waitReason ?? null,
+      timeline: work.timeline ?? [],
+      screened: work.screened ?? 0,
+      skipped: work.skipped ?? 0,
+      trigger: work.trigger?.text ?? null,
+      appeal: ready ? work.appeal : null,
+      pdfBase64: work.pdfBase64 ?? null,
+    }
+  } catch {
+    return {}
   }
 }
 

@@ -6,7 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 export function migrationSql(): string {
   const dir = join(here, '../../migrations')
-  return ['0001_init.sql', '0002_case_payment.sql', '0003_low_confirm.sql'].map((name) => readFileSync(join(dir, name), 'utf8')).join('\n')
+  return ['0001_init.sql', '0002_case_payment.sql', '0003_low_confirm.sql', '0004_case_work.sql'].map((name) => readFileSync(join(dir, name), 'utf8')).join('\n')
 }
 
 /** Minimal D1 surface the store uses. */

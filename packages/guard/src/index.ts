@@ -21,9 +21,11 @@ export {
   buildServTools,
   createFetchComplete,
   readServApiKey,
+  readServText,
   resolveEffort,
   resolveModel,
   servChat,
+  servModel,
   servStructured,
 } from './serv.ts'
 
@@ -55,6 +57,7 @@ export { evaluateRules } from './ported/rules.ts'
 export { checkResponse, repairResponse } from './ported/response.ts'
 export { checkSettlement } from './ported/settlement.ts'
 export { sellerUrlProblem } from './ported/url-safety.ts'
+export { endpointMatches, normalizeEndpoint, parseEndpointPattern } from './ported/endpoints.ts'
 export { MemorySpendLedger, dayKey } from './ported/spend.ts'
 export { stricter } from './ported/types.ts'
 export type { GuardFinding, ServSignal, Severity } from './ported/types.ts'

@@ -7,6 +7,7 @@
  */
 
 export const SERV_BASE_URL = 'https://inference-api.openserv.ai/v1'
+export const SERV_RESPONSES_URL = `${SERV_BASE_URL}/responses`
 export const SERV_DEFAULT_MODEL = 'gpt-5.4-mini'
 
 export type ServReasoningEffort = 'none' | 'low' | 'medium' | 'high'
@@ -34,13 +35,11 @@ export type ServMeta = {
   promptVersion?: string
 }
 
-type Tool = {
+export type ServTool = {
   type: 'function'
-  function: {
-    name: string
-    description?: string
-    parameters?: { type: 'object'; properties: Record<string, unknown> }
-  }
+  name: string
+  description?: string
+  parameters?: { type: 'object'; properties: Record<string, unknown>; additionalProperties?: boolean }
 }
 
 export type ServMessage = {
@@ -49,11 +48,20 @@ export type ServMessage = {
 }
 
 export type ServResponse = {
+  id?: string
   model?: string
+  output_text?: string | null
+  output?: Array<{
+    type?: string
+    role?: string
+    content?: Array<{ type?: string; text?: string | null; refusal?: string | null }>
+  }>
   usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
     prompt_tokens?: number
     completion_tokens?: number
-    total_tokens?: number
   }
   choices?: Array<{
     finish_reason?: string | null
@@ -74,45 +82,53 @@ export function resolveEffort(effort?: ServReasoningEffort | string): ServReason
   return 'low'
 }
 
-export function buildServTools(opts: ServToolsOptions = {}): Tool[] {
-  const tools: Tool[] = []
+export function buildServTools(opts: ServToolsOptions = {}): ServTool[] {
+  const tools: ServTool[] = []
   if (opts.promptGuard) {
-    tools.push({
-      type: 'function',
-      function: { name: 'serv_prompt_guard' },
-    })
+    tools.push({ type: 'function', name: 'serv_prompt_guard' })
   }
   if (opts.shadowAgent) {
     const properties: Record<string, unknown> = {}
-    if (opts.shadowAgent.hint) {
-      properties.hint = { type: 'string', default: opts.shadowAgent.hint }
-    }
+    if (opts.shadowAgent.hint) properties.hint = { type: 'string', default: opts.shadowAgent.hint }
     if (opts.shadowAgent.maxIterations != null) {
-      properties.max_iterations = {
-        type: 'integer',
-        default: opts.shadowAgent.maxIterations,
-      }
+      properties.max_iterations = { type: 'integer', default: opts.shadowAgent.maxIterations }
     }
     tools.push({
       type: 'function',
-      function: {
-        name: 'serv_shadow_agent',
-        description: 'Enable SERV shadow-agent validation.',
-        ...(Object.keys(properties).length
-          ? { parameters: { type: 'object', properties } }
-          : {}),
-      },
+      name: 'serv_shadow_agent',
+      description: 'Enable SERV shadow-agent validation.',
+      ...(Object.keys(properties).length ? { parameters: { type: 'object', properties, additionalProperties: false } } : {}),
     })
   }
   return tools
+}
+
+/** A graph id from SERV_GRAPH_ID_* wins. The model id is then gr_<id>. Otherwise SERV_MODEL. */
+export function servModel(graphEnv?: string): string {
+  const graph = graphEnv ? process.env[graphEnv]?.trim() : ''
+  if (graph) return graph.startsWith('gr_') ? graph : `gr_${graph}`
+  return resolveModel()
+}
+
+export function readServText(response: ServResponse): { text: string | null; refusal: string | null; finishReason: string | null } {
+  const refusal = response.choices?.[0]?.message?.refusal ?? null
+  if (typeof response.output_text === 'string' && response.output_text.length > 0) {
+    return { text: response.output_text, refusal, finishReason: response.choices?.[0]?.finish_reason ?? 'stop' }
+  }
+  const blocks = response.output?.flatMap((item) => item.content ?? []) ?? []
+  const refused = blocks.find((block) => block.refusal)
+  const textBlock = blocks.find((block) => block.type === 'output_text' && block.text)
+  if (textBlock?.text) return { text: textBlock.text, refusal: refused?.refusal ?? refusal, finishReason: 'stop' }
+  const legacy = response.choices?.[0]?.message?.content
+  return { text: legacy ?? null, refusal: refused?.refusal ?? refusal, finishReason: response.choices?.[0]?.finish_reason ?? null }
 }
 
 function usageFromResponse(response: ServResponse): ServUsage | undefined {
   const u = response.usage
   if (!u) return undefined
   return {
-    promptTokens: u.prompt_tokens,
-    completionTokens: u.completion_tokens,
+    promptTokens: u.input_tokens ?? u.prompt_tokens,
+    completionTokens: u.output_tokens ?? u.completion_tokens,
     totalTokens: u.total_tokens,
   }
 }
@@ -147,7 +163,7 @@ export function readServApiKey(): string {
 export function createFetchComplete(fetchImpl: typeof fetch = fetch): ServComplete {
   return async (body) => {
     const apiKey = readServApiKey()
-    const response = await fetchImpl(`${SERV_BASE_URL}/chat/completions`, {
+    const response = await fetchImpl(SERV_RESPONSES_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -173,25 +189,25 @@ export async function servChat(
   },
   complete: ServComplete = createFetchComplete(),
 ): Promise<{ text: string; meta: ServMeta }> {
-  const model = resolveModel(params.model)
+  const model = params.model ?? servModel()
   const reasoningEffort = resolveEffort(params.reasoningEffort)
   const tools = buildServTools(params.servTools ?? {})
   const started = Date.now()
   const response = await complete({
     model,
-    reasoning_effort: reasoningEffort,
-    messages: [
-      { role: 'system', content: params.system },
-      { role: 'user', content: params.user },
-    ],
+    instructions: params.system,
+    input: params.user,
+    reasoning: { effort: reasoningEffort },
     ...(tools.length ? { tools } : {}),
   })
-  const text = response.choices?.[0]?.message?.content
-  if (!text) throw new Error('Empty response from SERV Reasoning')
+  const read = readServText(response)
+  if (read.refusal) throw new Error(`SERV Reasoning refused: ${read.refusal}`)
+  if (!read.text) throw new Error('Empty response from SERV Reasoning')
+  const text = read.text
   const meta: ServMeta = {
     model: response.model ?? model,
     reasoningEffort,
-    finishReason: response.choices?.[0]?.finish_reason,
+    finishReason: read.finishReason,
     usage: usageFromResponse(response),
     latencyMs: Date.now() - started,
     promptVersion: params.promptVersion,
@@ -214,20 +230,18 @@ export async function servStructured<T>(
   },
   complete: ServComplete = createFetchComplete(),
 ): Promise<{ data: T; meta: ServMeta }> {
-  const model = resolveModel(params.model)
+  const model = params.model ?? servModel()
   const reasoningEffort = resolveEffort(params.reasoningEffort)
   const tools = buildServTools(params.servTools ?? {})
   const started = Date.now()
   const response = await complete({
     model,
-    reasoning_effort: reasoningEffort,
-    messages: [
-      { role: 'system', content: params.system },
-      { role: 'user', content: params.user },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
+    instructions: params.system,
+    input: params.user,
+    reasoning: { effort: reasoningEffort },
+    text: {
+      format: {
+        type: 'json_schema',
         name: params.schemaName,
         strict: true,
         schema: params.jsonSchema,
@@ -235,19 +249,18 @@ export async function servStructured<T>(
     },
     ...(tools.length ? { tools } : {}),
   })
-  const choice = response.choices?.[0]
-  const finishReason = choice?.finish_reason
-  const refusal = choice?.message?.refusal
+  const read = readServText(response)
+  const finishReason = read.finishReason
   if (finishReason === 'length') {
     throw new Error('SERV Reasoning response truncated (finish_reason=length)')
   }
   if (finishReason === 'content_filter') {
     throw new Error('SERV Reasoning blocked by content filter')
   }
-  if (refusal) {
-    throw new Error(`SERV Reasoning refused: ${refusal}`)
+  if (read.refusal) {
+    throw new Error(`SERV Reasoning refused: ${read.refusal}`)
   }
-  const text = choice?.message?.content
+  const text = read.text
   if (!text) {
     throw new Error(`Empty structured response from SERV Reasoning (finish_reason=${finishReason ?? 'unknown'})`)
   }

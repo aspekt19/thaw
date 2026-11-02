@@ -125,6 +125,7 @@ describe('case remainder payment', () => {
       amountUsd: string
       chain: string
       token: string
+      caseToken: string
     }
     assert.equal(invoice.paid, false)
     assert.equal(invoice.status, 'awaiting_payment')
@@ -137,7 +138,7 @@ describe('case remainder payment', () => {
     assert.equal(invoice.token, TOKEN)
     seenAmount = atomic
 
-    const pending = await handleApi(new Request(`http://thaw.test/api/cases/${invoice.caseId}`), env(db))
+    const pending = await handleApi(new Request(`http://thaw.test/api/cases/${invoice.caseId}`, { headers: { authorization: `Bearer ${invoice.caseToken}` } }), env(db))
     assert.equal(((await pending!.json()) as { status: string }).status, 'awaiting_payment')
 
     const ask = async (impl: typeof fetch) => {
